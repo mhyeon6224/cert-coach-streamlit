@@ -26,7 +26,7 @@ def new_state() -> dict:
                     "interest_posting": ""},
         "target": {}, "recommendations": None, "schedules": {}, "plan": None, "plan_preview": None,
         "boost_phase": None, "assets": [], "validity_opt_in": False, "pending": None,
-        "messages": [], "guideline": None, "study_path": None, "notion": None, "memo": "", "notices": [],
+        "messages": [], "guideline": None, "guideline_detail": None, "study_path": None, "notion": None, "memo": "", "notices": [],
     }
 
 
@@ -196,9 +196,10 @@ def do_recommend(state, llm, search, today, *, after_pass="", exclude=None) -> s
     result = engine.recommend(state["profile"], llm, today, after_pass=after_pass, exclude=exclude)
     state["recommendations"] = result
     text = engine.recommend_markdown(result)
-    guide = engine.job_guideline(state["profile"], [c["name"] for c in result["candidates"]], llm, search, today) \
+    detail: dict = {}
+    guide = engine.job_guideline(state["profile"], [c["name"] for c in result["candidates"]], llm, search, today, detail) \
         if result["candidates"] and llm else None
-    state["guideline"] = guide
+    state["guideline"], state["guideline_detail"] = guide, detail or None
     return text + ("\n\n---\n\n" + guide if guide else "")
 
 
@@ -405,8 +406,9 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
     if intent == "jobguide":
         names = [c["name"] for c in (state.get("recommendations") or {}).get("candidates", [])] or \
                 ([target["name"]] if target.get("name") else [])
-        guide = engine.job_guideline(state["profile"], names, llm, search, today)
-        state["guideline"] = guide
+        detail: dict = {}
+        guide = engine.job_guideline(state["profile"], names, llm, search, today, detail)
+        state["guideline"], state["guideline_detail"] = guide, detail or None
         return prefix + (guide or "취업 가이드라인은 관심 공고나 목표 직무가 있을 때만 만들어요. 희망 직무를 알려 주거나 '프로필' 탭의 '관심 공고'에 공고 본문을 붙여 넣어 주세요.")
 
     if intent == "profile_update" or (intent == "general" and changed):

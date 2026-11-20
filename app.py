@@ -402,6 +402,27 @@ if st.session_state.get("flash"):
     st.toast("알림: " + _message.split("\n")[0][:80])
 
 
+@st.dialog("취업 가이드라인 — 분석한 자료", width="large")
+def guideline_dialog(detail: dict) -> None:
+    st.caption(f"{detail.get('origin', '')} · 확인 날짜 {detail.get('checked_at', '')}"
+               + (f" · 검색어: {detail['query']}" if detail.get("query") else ""))
+    if detail.get("competencies"):
+        ui.label("역량별 근거")
+        ui.table(["필요 역량", "근거 자료", "구분"],
+                 [[c["name"], ", ".join(f"[{n}]" for n in c["sources"]) or "근거 번호 없음",
+                   ("2건 이상 반복", "good") if len(c["sources"]) >= 2 else ("한 번만 확인", "warn")]
+                  for c in detail["competencies"]])
+    ui.label("읽은 자료")
+    for source in detail["sources"]:
+        with st.container(border=True):
+            st.markdown(f"**[{source['no']}] {source['title']}**")
+            if source.get("url"):
+                st.markdown(f"[원문 열기]({source['url']})")
+            st.caption(f"AI가 읽은 부분(앞 {source['read_chars']}자 중 일부)")
+            st.text(source["excerpt"] + ("…" if source["read_chars"] > len(source["excerpt"]) else ""))
+    st.caption("검색으로 찾은 글의 일부만 읽고 요약한 것이라, 실제 공고 원문과 다를 수 있어요.")
+
+
 @st.dialog("알림")
 def notice_dialog() -> None:
     notices = S.get("notices") or []
@@ -549,6 +570,9 @@ with tab_rec:
         with st.container(border=True, key="card4"):
             ui.section("취업 가이드라인", "목표 직무·관심 공고가 있을 때만")
             st.markdown(S["guideline"])
+            if (S.get("guideline_detail") or {}).get("sources"):
+                if st.button("분석한 자료 보기", icon=":material/fact_check:", key="guide_sources"):
+                    guideline_dialog(S["guideline_detail"])
 
 # ------------------------------------------------------------------ 일정
 with tab_sched, st.container(border=True, key="card5"):

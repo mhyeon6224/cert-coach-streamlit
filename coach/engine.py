@@ -351,10 +351,23 @@ PATH_PROMPT = """너는 자격증 학습자료 선별자다. {untrusted}
   "cons": [{{"text": "후기에서 보인 단점", "source_ids": [0]}}]}}
 규칙:
 - < > 안의 설명 문구를 그대로 옮겨 쓰지 않는다. 검색 결과로 확인한 내용만 쓰고, 확인하지 못했으면 '미확인'이라고만 쓴다.
-- 비용 선호가 '완전 무료'면 유료 강의·교재(문제집 포함) 구매를 기본 경로·대안 경로·선택 이유 어디에도 넣지 않는다. '유료 강의 허용'·'시간 절약 우선'일 때만 유료 후보를 넣고 무료 대안을 함께 둔다.
+- 비용 선호가 '완전 무료'면 돈을 내고 사야 하는 것(유료 강의, 기본서·수험서·문제집, '노랭이'·'노란책' 같은 시판 교재)은 basic·alt·why 어디에도 쓰지 않는다. pros·cons의 후기 요약에서만 언급할 수 있다. '유료 강의 허용'·'시간 절약 우선'일 때만 유료 후보를 넣고 무료 대안을 함께 둔다.
 - 일부만 무료인 강의를 전체 무료라고 쓰지 않는다. 불법 복제·무단 공유 자료는 제외한다.
 - 합격·취업을 보장하는 표현을 쓰지 않는다.
 오늘 날짜: {today}"""
+
+
+PAID_WORDS = re.compile(r"문제집|기본서|수험서|노랭이|노란\s?책|교재\s?구매|유료\s?(?:강의|인강)\s?(?:수강|결제|구매)")
+
+
+def _paid_mentions(raw: dict) -> list[str]:
+    """'완전 무료' 조건에서 경로(basic·alt·why)에 들어간 구매형 자료 표현을 찾는다. 후기(pros·cons)는 보지 않는다."""
+    basic = raw.get("basic") if isinstance(raw.get("basic"), dict) else {}
+    texts = [str(basic.get("why") or "")]
+    for item in (basic.get("lecture"), basic.get("past_exam"), raw.get("alt")):
+        if isinstance(item, dict):
+            texts.append(str(item.get("text") or ""))
+    return sorted({m.group(0) for text in texts for m in PAID_WORDS.finditer(text)})
 
 
 def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None, today: date) -> str:
@@ -395,6 +408,20 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
     except LLMError:
         return "\n\n".join(head + ["⛔ 못 함: 자료 요약에 실패했어요. 아래 검색 결과를 직접 확인해 주세요.", links])
 
+    if cost == "완전 무료" and _paid_mentions(raw):  # 유료 자료가 섞였으면 한 번만 다시 요청한다
+        try:
+            retry = llm.json([
+                {"role": "system", "content": PATH_PROMPT.format(untrusted=UNTRUSTED, name=cert["name"], today=today.isoformat())},
+                {"role": "user", "content": json.dumps({
+                    "user_profile": profile_text(profile), "search_results": payload,
+                    "correction": f"직전 답의 basic·alt·why에 구매해야 하는 자료({', '.join(_paid_mentions(raw))})가 들어 있었다. "
+                                  "이번에는 무료 자료만으로 다시 작성한다."}, ensure_ascii=False)}],
+                temperature=0.0, max_tokens=2000)
+            if len(_paid_mentions(retry)) < len(_paid_mentions(raw)):
+                raw = retry
+        except LLMError:
+            pass
+
     def cite(item) -> tuple[str, list[int]] | None:
         if not isinstance(item, dict) or not item.get("text"):
             return None
@@ -422,11 +449,21 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
         if key == "book" and cost == "완전 무료":
             lines.append("- 교재: 완전 무료 기준이라 교재 구매는 넣지 않았어요.")
         else:
+            if item and cost == "완전 무료" and PAID_WORDS.search(item[0]):
+                item = None
             lines.append(f"- {label}: {item[0]} {refs(item[1])}" if item else f"- {label}: 미확인")
     out = head + ["**기본 경로**\n" + "\n".join(lines)]
-    if basic.get("why"):
-        out.append(f"선택 이유: {basic['why']}")
+    strict = cost == "완전 무료"
+    why = str(basic.get("why") or "")
+    if strict and (not why or PAID_WORDS.search(why)):  # 다시 요청해도 유료 자료가 남으면 조건만으로 이유를 적는다
+        style = profile.get("learning_style")
+        why = "비용 선호가 '완전 무료'라 무료 강의와 무료로 공개된 기출·실습 자료만으로 구성했어요." + (
+            f" 학습 방식({style})에 맞춰 순서를 잡았어요." if style else "")
+    if why:
+        out.append(f"선택 이유: {why}")
     alt = cite(raw.get("alt"))
+    if alt and strict and PAID_WORDS.search(alt[0]):
+        alt = None
     if alt:
         out.append(f"**대안 경로**: {alt[0]} {refs(alt[1])}")
     repeated, single = [], []
@@ -456,8 +493,12 @@ GUIDE_PROMPT = """너는 채용공고 분석가다. {untrusted}
 규칙: 자격증이 취업에 도움이 된다고 단정하지 않는다. 필수/우대 구분이 흐리면 그렇게 적는다."""
 
 
-def job_guideline(profile: dict, cert_names: list[str], llm: LLM | None, search: Search | None, today: date) -> str | None:
-    """관심 공고나 목표 직무가 있을 때만 만든다. 없으면 None(블록을 출력하지 않음)."""
+def job_guideline(profile: dict, cert_names: list[str], llm: LLM | None, search: Search | None, today: date,
+                  detail: dict | None = None) -> str | None:
+    """관심 공고나 목표 직무가 있을 때만 만든다. 없으면 None(블록을 출력하지 않음).
+
+    detail(dict)을 넘기면 분석에 쓴 자료(제목·링크·읽은 부분)와 역량별 근거 번호를 채워 준다.
+    """
     job = (profile.get("desired_job") or "").strip()
     posting = (profile.get("interest_posting") or "").strip()
     if not job and not posting:
@@ -487,11 +528,18 @@ def job_guideline(profile: dict, cert_names: list[str], llm: LLM | None, search:
     except LLMError:
         return "**취업 가이드라인**\n\n⛔ 못 함: 공고 분석에 실패했어요. 잠시 뒤 다시 시도해 주세요."
     out = ["**취업 가이드라인** (관심 공고·목표 직무가 있을 때만 표시)", f"- 직무 요약: {raw.get('job_summary') or '미확인'}"]
-    repeated, single = [], []
+    repeated, single, evidence = [], [], []
     for item in raw.get("competencies") or []:
         if isinstance(item, dict) and item.get("name"):
             ids = {i for i in item.get("source_ids") or [] if isinstance(i, int) and 0 <= i < len(sources)}
             (repeated if len(ids) >= 2 else single).append(str(item["name"]))
+            evidence.append({"name": str(item["name"]), "sources": sorted(i + 1 for i in ids)})
+    if detail is not None:
+        detail.update({
+            "origin": origin, "checked_at": today.isoformat(), "query": "" if posting else f"{job} 신입 채용공고 자격요건 우대사항",
+            "competencies": evidence,
+            "sources": [{"no": i + 1, "title": s["title"], "url": s["url"], "excerpt": s["content"][:500],
+                         "read_chars": min(len(s["content"]), 2000)} for i, s in enumerate(sources)]})
     if repeated:
         out.append("- 필요 역량 묶음(2건 이상 반복): " + ", ".join(repeated))
     if single:
