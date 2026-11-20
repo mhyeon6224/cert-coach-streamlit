@@ -214,23 +214,23 @@ def recommend_markdown(result: dict) -> str:
     if not result["candidates"]:
         return ("조건에 맞는 후보를 카탈로그에서 찾지 못했어요. 희망 직무를 조금 더 구체적으로 알려 주세요. "
                 "(예: 데이터 분석, 회계, 마케팅, 클라우드 엔지니어)")
-    out = [f"**이번 판단에 사용한 정보:** {result['used']}"]
+    out = []
     if result["summary"]:
         out.append(result["summary"])
     for item in result["candidates"]:
         label = "1순위" if item["rank"] == 1 else f"대안 {item['rank'] - 1}"
         out.append(
-            f"**{label} — {item['name']}** ({item['issuer']})\n"
-            f"- 진로 연결 근거: {item['reason']}\n"
-            + (f"- 준비 예상 범위: {item['prep_scope']}\n" if item["prep_scope"] else "")
-            + (f"- 주의점: {item['caution']}\n" if item["caution"] else "")
-            + (f"- 목록 밖 자격증: {item['outside']}만 한 상태예요. 일정·응시료·응시자격은 \"시험 일정 알려줘\"로 따로 확인해 주세요.\n"
-               if item.get("outside") else "")
-            + f"- 공식 사이트: {item['official_url']}")
+            f"##### {label} · {item['name']}\n"
+            f"주관: {item['issuer']} · [공식 사이트]({item['official_url']})\n\n"
+            f"- **왜 맞는지** {item['reason']}\n"
+            + (f"- **준비 범위** {item['prep_scope']}\n" if item["prep_scope"] else "")
+            + (f"- **주의점** {item['caution']}\n" if item["caution"] else "")
+            + (f"- **목록 밖 자격증** {item['outside']}만 한 상태예요. 일정·응시료·응시자격은 \"시험 일정 알려줘\"로 따로 확인해 주세요.\n"
+               if item.get("outside") else ""))
     if result["practice_first"]:
-        out.append(f"솔직히 말하면: {result['practice_first']}")
-    out += [f"_{n}_" for n in result["notices"]]
-    out.append("다음에 할 수 있는 것 (원하는 것부터 골라 주세요)\n"
+        out.append(f"##### 솔직히 말하면\n{result['practice_first']}")
+    out.append("##### 참고\n" + "\n".join([f"- 이번 판단에 사용한 정보: {result['used']}"] + [f"- {n}" for n in result["notices"]]))
+    out.append("##### 다음에 할 수 있는 것\n"
                "- \"1순위로 준비할래\" — 목표 자격증으로 저장\n"
                "- \"1순위 시험 일정 알려줘\" — 공식 접수·시험·발표일 확인\n"
                "- \"강의와 교재 추천해줘\" — 강의·교재·기출 자료 찾기\n"
@@ -463,7 +463,7 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
                       "rows": [[k, v] for k, v in rows or [] if v], "pros": pros or [], "cons": cons or []})
 
     cost = profile.get("cost_pref") or ""
-    head = [f"**{cert['name']} 학습 경로** — 사용한 정보: "
+    head = [f"**{cert['name']} 학습 경로**\n\n사용한 정보: "
             f"{used_info(profile, ['learning_style', 'cost_pref', 'budget', 'weekly_hours', 'extra', 'exam_history'])}"]
     if not cost:
         head.append("비용 선호가 아직 없어 '강의 무료·교재 구매' 기준으로 찾았어요. '프로필' 탭에서 바꾸면 다시 계산해요.")
@@ -600,16 +600,46 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
         found = lookup_price(title, low, high) if kind == "lecture" else None
         return f"{found[0]} (검색 기준 · [출처]({found[1]}) · 판매처에서 다시 확인)" if found else check_link(title, kind)
 
+    def youtube_link(title: str, ids: list[int]) -> str:
+        """유튜브 강의라면 바로 갈 수 있는 링크를 붙인다. 채널 → 재생목록 → 영상 순으로, 못 찾으면 유튜브 검색 화면으로 보낸다."""
+        from urllib.parse import quote
+        is_yt = lambda url: bool(re.search(r"(?:^|//|\.)(?:youtube\.com|youtu\.be)/", url))
+        cited = [hits[i]["url"] for i in ids if is_yt(hits[i]["url"])]
+        if not cited and not re.search(r"유튜브|youtube", title, re.I):
+            return ""
+        clean = re.sub(r"\s+", " ", re.sub(r"[\(\[].*?[\)\]]", " ", title)).strip()
+        generic = set(re.split(r"\s+", cert["name"])) | {"유튜브", "유튜브에서", "무료", "강의", "채널", "인강", "시청", "YouTube", "youtube", "에서", "제공"}
+        words = [w for w in re.split(r"[\s·,/]+", clean) if len(w) >= 2 and w not in generic and not w.startswith("유튜브")]
+        found = list(cited)
+        if words:  # 채널·강의 이름이 실제로 제목이나 설명에 나오는 유튜브 페이지만 쓴다
+            try:
+                for hit in search.search(f"{cert['name']} {' '.join(words[:3])} 유튜브", domains=["youtube.com"], max_results=5):
+                    if is_yt(hit["url"]) and any(w in hit["title"] + " " + hit["content"] for w in words[:2]):
+                        found.append(hit["url"])
+            except SearchError:
+                pass
+        rank = lambda url: 0 if re.search(r"youtube\.com/(?:@|channel/|c/|user/)", url) else 1 if "list=" in url else 2
+        if found:
+            best = min(found, key=rank)
+            label = ("유튜브 채널 열기", "유튜브 재생목록 열기", "유튜브 영상 열기")[rank(best)]
+            return f"[{label}]({best})"
+        return f"[유튜브에서 이 강의 검색](https://www.youtube.com/results?search_query={quote(cert['name'] + ' ' + ' '.join(words[:3]))})"
+
+    def sub(label: str, value: str) -> str:
+        return f"\n  - **{label}** {value}" if value and value != "미확인" else ""
+
     costs = []
     if lecture:
         lecture_price = price_of(basic["lecture"], lecture[1])
         costs.append(f"강의 {lecture_price}")
-        lines.append(f"- 강의: {lecture[0]} {refs(lecture[1])}\n  - 가격: {lecture_price} / 전체 범위 cover: {known(basic['lecture'].get('coverage'))}"
-                     f" / 무료 범위·유료 전환: {known(basic['lecture'].get('free_scope'))} / 확인 방식: 검색 원문 요약, {today.isoformat()}")
-        card("강의", lecture[0], lecture[1], [("가격", lecture_price), ("전체 범위", known(basic["lecture"].get("coverage"))),
-                                           ("무료 범위·유료 전환", known(basic["lecture"].get("free_scope")))])
+        coverage, free_scope = known(basic["lecture"].get("coverage")), known(basic["lecture"].get("free_scope"))
+        go = youtube_link(lecture[0], lecture[1])
+        lines.append(f"- **강의** — {lecture[0]} {refs(lecture[1])}" + sub("가격", lecture_price) + sub("전체 범위", coverage)
+                     + sub("무료 범위·유료 전환", free_scope) + sub("바로 가기", go))
+        card("강의", lecture[0], lecture[1], [("가격", lecture_price), ("전체 범위", coverage), ("무료 범위·유료 전환", free_scope),
+                                           ("바로 가기", go)])
     else:
-        lines.append("- 강의: 후보 미확인 — 근거가 확인된 강의를 찾지 못했어요.")
+        lines.append("- **강의** — 후보 미확인. 근거가 확인된 강의를 찾지 못했어요.")
         card("강의", "후보 미확인", rows=[("상태", "근거가 확인된 강의를 찾지 못했어요.")])
     paid = cite(basic.get("paid_lecture")) if cost in ("유료 강의 허용", "시간 절약 우선") else None
     if paid and re.search(r"무료|교재|유튜브", paid[0]):  # 유료 인강이 아닌 것이 들어오면 후보로 쓰지 않는다
@@ -618,21 +648,20 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
         paid_price = priced(basic["paid_lecture"], paid[1], paid[0], 10000, 1500000)
         why_pay = known(basic["paid_lecture"].get("why_pay"))
         costs.append(f"유료 강의를 고르면 {paid_price.split(' (')[0].split(' — ')[0]}")
-        lines.append(f"- 유료 강의 후보: {paid[0]} {refs(paid[1])}\n  - 수강료: {paid_price}"
-                     + (f"\n  - 돈을 낼 만한 이유: {why_pay}" if why_pay != "미확인" else "")
-                     + "\n  - 위 무료 강의로 시작해 보고, 부족하면 이 강의를 고려하는 순서를 권해요.")
+        lines.append(f"- **유료 강의 후보** — {paid[0]} {refs(paid[1])}" + sub("수강료", paid_price) + sub("돈을 낼 만한 이유", why_pay)
+                     + sub("권하는 순서", "위 무료 강의로 시작해 보고, 부족하면 이 강의를 고려"))
         card("유료 강의 후보", paid[0], paid[1], [("수강료", paid_price), ("돈을 낼 만한 이유", "" if why_pay == "미확인" else why_pay),
                                               ("권하는 순서", "무료 강의로 시작해 보고, 부족하면 고려")])
     elif cost in ("유료 강의 허용", "시간 절약 우선"):
-        lines.append("- 유료 강의 후보: 미확인 — 검색한 글에서는 근거가 확인된 유료 강의를 찾지 못했어요.")
+        lines.append("- **유료 강의 후보** — 미확인. 검색한 글에서는 근거가 확인된 유료 강의를 찾지 못했어요.")
         card("유료 강의 후보", "후보 미확인", rows=[("상태", "검색한 글에서는 근거가 확인된 유료 강의를 찾지 못했어요.")])
     item = cite(basic.get("past_exam"))
     if item and cost == "완전 무료" and PAID_WORDS.search(item[0]):
         item = None
-    lines.append(f"- 기출·자료: {item[0]} {refs(item[1])}" if item else "- 기출·자료: 미확인")
+    lines.append(f"- **기출·자료** — {item[0]} {refs(item[1])}" if item else "- **기출·자료** — 미확인")
     card("기출·자료", item[0] if item else "미확인", item[1] if item else None)
     if cost == "완전 무료":
-        lines.append("- 교재: 완전 무료 기준이라 교재 구매는 넣지 않았어요.")
+        lines.append("- **교재** — 완전 무료 기준이라 교재 구매는 넣지 않았어요.")
         card("교재", "구매 안 함", rows=[("이유", "완전 무료 기준이라 교재 구매는 넣지 않았어요.")])
         costs.append("교재 0원(구매 안 함)")
     else:
@@ -640,26 +669,25 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
             source = basic.get(key)
             item = cite(source)
             if not item:
-                lines.append(f"- {label}: 미확인 — 근거가 확인된 교재를 찾지 못했어요.")
+                lines.append(f"- **{label}** — 미확인. 근거가 확인된 교재를 찾지 못했어요.")
                 card(label, "미확인", rows=[("상태", "근거가 확인된 교재를 찾지 못했어요.")])
                 continue
             book_cost = priced(source, item[1], item[0], 8000, 60000)
             if key == "book":
                 costs.append(f"교재 {book_cost.split(' (')[0].split(' — ')[0]}")
             pros, cons = facts(source.get("pros")), facts(source.get("cons"))
-            lines.append(
-                f"- {label}: {item[0]} {refs(item[1])}\n  - 가격: {book_cost}"
-                + (f" / 맞는 경우: {known(source.get('fit'))}" if known(source.get("fit")) != "미확인" else "")
-                + f"\n  - 장점: {'; '.join(pros) if pros else '확인된 내용 없음'}"
-                + f"\n  - 단점·주의점: {'; '.join(cons) if cons else '검색한 글에서는 확인하지 못했어요(없다는 뜻은 아니에요)'}")
             fit = known(source.get("fit"))
+            lines.append(
+                f"- **{label}** — {item[0]} {refs(item[1])}" + sub("가격", book_cost) + sub("맞는 경우", fit)
+                + sub("장점", " · ".join(pros) if pros else "확인된 내용 없음")
+                + sub("단점·주의점", " · ".join(cons) if cons else "검색한 글에서는 확인하지 못했어요(없다는 뜻은 아니에요)"))
             card(label, item[0], item[1], [("가격", book_cost), ("맞는 경우", "" if fit == "미확인" else fit)], pros,
                  cons or ["검색한 글에서는 확인하지 못했어요(없다는 뜻은 아니에요)"])
     budget = (profile.get("budget") or "").strip()
-    lines.append("- 예상 비용(확인된 가격만): " + " · ".join(costs)
-                 + (f" / 입력한 예산: {budget}" if budget else "")
-                 + " — '가격 확인 필요' 항목은 옆의 링크에서 직접 확인해 주세요.")
-    out = head + ["**기본 경로**\n" + "\n".join(lines)]
+    out = head + ["##### 기본 경로\n" + "\n".join(lines)]
+    out.append("##### 예상 비용 (확인된 가격만)\n" + "\n".join(f"- {c}" for c in costs)
+               + (f"\n- 입력한 예산: {budget}" if budget else "")
+               + ("\n\n'가격 확인 필요' 항목은 옆의 링크에서 직접 확인해 주세요." if any("확인 필요" in c for c in costs) else ""))
     strict = cost == "완전 무료"
     why = str(basic.get("why") or "")
     if strict and (not why or PAID_WORDS.search(why)):  # 다시 요청해도 유료 자료가 남으면 조건만으로 이유를 적는다
@@ -667,12 +695,12 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
         why = "비용 선호가 '완전 무료'라 무료 강의와 무료로 공개된 기출·실습 자료만으로 구성했어요." + (
             f" 학습 방식({style})에 맞춰 순서를 잡았어요." if style else "")
     if why:
-        out.append(f"선택 이유: {why}")
+        out.append(f"##### 이 경로를 고른 이유\n{why}")
     alt = cite(raw.get("alt"))
     if alt and strict and PAID_WORDS.search(alt[0]):
         alt = None
     if alt:
-        out.append(f"**대안 경로**: {alt[0]} {refs(alt[1])}")
+        out.append(f"##### 대안 경로\n{alt[0]} {refs(alt[1])}")
     repeated, single, reviews = [], [], []
     for kind, label in (("pros", "장점"), ("cons", "단점")):
         for item in raw.get(kind) or []:
@@ -687,13 +715,13 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
             "alt": {"text": alt[0], "sources": [[i + 1, hits[i]["url"]] for i in alt[1]]} if alt else None,
             "scope": f"{len(hits)}개 페이지, {today.isoformat()} 확인" + (" · 일부 검색 실패" if failed else ""),
             "used": used_info(profile, ["learning_style", "cost_pref", "budget", "weekly_hours", "extra", "exam_history"])})
-    review = ["**후기 근거**"]
-    review.append("반복 확인된 의견\n" + "\n".join(repeated) if repeated else "반복 확인된 의견: 없음 — 구성 기준으로만 판단했어요.")
+    review = ["##### 후기 근거"]
+    review.append("**2곳 이상에서 반복된 의견**\n" + "\n".join(repeated) if repeated else "반복 확인된 의견은 없어요. 구성 기준으로만 판단했어요.")
     if single:
-        review.append("단일 의견(참고만)\n" + "\n".join(single))
+        review.append("**한 곳에서만 나온 의견 (참고만)**\n" + "\n".join(single))
     review.append(f"확인 범위: {len(hits)}개 페이지, {today.isoformat()} 확인" + (" · 일부 검색 실패" if failed else ""))
     out.append("\n\n".join(review))
-    out.append("다음에 할 수 있는 것\n- \"시험 일정 알려줘\" — 공식 일정 확인\n- \"학습 계획 세워줘\" — 이 자료로 주차별 계획 만들기\n"
+    out.append("##### 다음에 할 수 있는 것\n- \"시험 일정 알려줘\" — 공식 일정 확인\n- \"학습 계획 세워줘\" — 이 자료로 주차별 계획 만들기\n"
                "- '프로필' 탭 — 비용 선호·학습 방식을 바꾸면 다시 찾아요")
     return "\n\n".join(out)
 
@@ -742,7 +770,7 @@ def job_guideline(profile: dict, cert_names: list[str], llm: LLM | None, search:
             temperature=0.1, max_tokens=1600)
     except LLMError:
         return "**취업 가이드라인**\n\n못 함: 공고 분석에 실패했어요. 잠시 뒤 다시 시도해 주세요."
-    out = ["**취업 가이드라인** (관심 공고·목표 직무가 있을 때만 표시)", f"- 직무 요약: {raw.get('job_summary') or '미확인'}"]
+    out = ["**취업 가이드라인**" + (f" · {job}" if job else ""), f"##### 직무 요약\n{raw.get('job_summary') or '미확인'}"]
     repeated, single, evidence = [], [], []
     for item in raw.get("competencies") or []:
         if isinstance(item, dict) and item.get("name"):
@@ -756,15 +784,16 @@ def job_guideline(profile: dict, cert_names: list[str], llm: LLM | None, search:
             "sources": [{"no": i + 1, "title": s["title"], "url": s["url"], "excerpt": s["content"][:500],
                          "read_chars": min(len(s["content"]), 2000)} for i, s in enumerate(sources)]})
     if repeated:
-        out.append("- 필요 역량 묶음(2건 이상 반복): " + ", ".join(repeated))
+        out.append("##### 여러 공고에서 반복된 요건 (2건 이상)\n" + "\n".join(f"- {name}" for name in repeated))
     if single:
-        out.append("- 한 번만 확인된 요건(참고만): " + ", ".join(single))
-    for item in raw.get("cert_links") or []:
-        if isinstance(item, dict) and item.get("cert"):
-            out.append(f"- 자격증 연결 · {item['cert']}: 닿는 지점 — {item.get('touches') or '미확인'} / 한계 — {item.get('not_touches') or '미확인'}")
+        out.append("##### 한 번만 나온 요건 (참고만)\n" + "\n".join(f"- {name}" for name in single))
+    linked = [f"- **{item['cert']}**\n  - 닿는 지점: {item.get('touches') or '미확인'}\n  - 한계: {item.get('not_touches') or '미확인'}"
+              for item in raw.get("cert_links") or [] if isinstance(item, dict) and item.get("cert")]
+    if linked:
+        out.append("##### 자격증이 닿는 지점과 한계\n" + "\n".join(linked))
     portfolio = [str(p) for p in raw.get("portfolio") or [] if p]
     if portfolio:
-        out.append("- 포트폴리오·경험 방향: " + " / ".join(portfolio[:3]))
+        out.append("##### 포트폴리오·경험 방향\n" + "\n".join(f"{n}. {p}" for n, p in enumerate(portfolio[:3], start=1)))
     if detail is not None:  # 화면에서 카드·표로 그릴 수 있게 구조 그대로도 담는다
         detail.update({
             "job": job, "job_summary": str(raw.get("job_summary") or ""),
@@ -773,9 +802,11 @@ def job_guideline(profile: dict, cert_names: list[str], llm: LLM | None, search:
                            for i in raw.get("cert_links") or [] if isinstance(i, dict) and i.get("cert")],
             "portfolio": portfolio[:3]})
     links = ", ".join(f"[{s['title'][:30]}]({s['url']})" for s in sources if s["url"])
-    out.append(f"- 근거 범위: {origin} · 확인 날짜 {today.isoformat()}" + (f" · 참고 공고: {links}" if links else ""))
-    out.append("- 제한: 공고마다 필수/우대가 달라요. 시험 일정·응시자격은 공식 원문으로 따로 확인해야 해요.")
-    return "\n".join(out[:1]) + "\n\n" + "\n".join(out[1:])
+    out.append("##### 근거와 제한\n"
+               f"- 근거 범위: {origin} · 확인 날짜 {today.isoformat()}\n"
+               + (f"- 참고 공고: {links}\n" if links else "")
+               + "- 제한: 공고마다 필수/우대가 달라요. 시험 일정·응시자격은 공식 원문으로 따로 확인해야 해요.")
+    return "\n\n".join(out)
 
 
 # ---------------------------------------------------------------- 유효기간 자산 (사용자가 원할 때만)

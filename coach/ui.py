@@ -139,6 +139,18 @@ button[kind="primary"], [data-testid="stBaseButton-primary"], [data-testid="stBa
   background: {BLUE} !important; border-color: {BLUE} !important; color: #fff !important; }}
 button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover, [data-testid="stBaseButton-primaryFormSubmit"]:hover {{
   background: #0c2a4f !important; border-color: #0c2a4f !important; color: #fff !important; }}
+/* 누를 수 없는 버튼은 한눈에 꺼져 보이게 한다 */
+.stButton > button:disabled, [data-testid="stFormSubmitButton"] > button:disabled, button[kind="primary"]:disabled,
+[data-testid="stBaseButton-primary"]:disabled, [data-testid="stBaseButton-primaryFormSubmit"]:disabled {{
+  background: #eef1f4 !important; border-color: {LINE} !important; color: #9aa5b1 !important; cursor: not-allowed; }}
+/* 대화 답변: 소제목·목록 간격 */
+[data-testid="stChatMessageContent"] p {{ line-height: 1.6; margin-bottom: 6px; }}
+[data-testid="stChatMessageContent"] ul, [data-testid="stChatMessageContent"] ol {{ margin: 2px 0 10px; padding-left: 18px; }}
+[data-testid="stChatMessageContent"] li {{ line-height: 1.55; margin: 2px 0; }}
+[data-testid="stChatMessageContent"] li ul {{ margin: 2px 0 4px; }}
+[data-testid="stChatMessageContent"] h5 {{ font-size: 14px; font-weight: 700; color: {BLUE}; padding: 10px 0 4px; margin: 6px 0 4px; border-top: 1px solid {LINE}; }}
+[data-testid="stChatMessageContent"] h5:first-child {{ border-top: 0; padding-top: 0; margin-top: 0; }}
+[data-testid="stChatMessageContent"] hr {{ margin: 10px 0; border-color: {LINE}; }}
 
 /* ---------- 입력 ---------- */
 [data-baseweb="input"], [data-baseweb="textarea"], [data-baseweb="select"] > div {{ border-radius: {R} !important; border-color: {LINE} !important; background: #fff !important; }}

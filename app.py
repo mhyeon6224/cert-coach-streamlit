@@ -232,6 +232,11 @@ def run_sync(token: str, link: str, today_value, hours: float, active: bool, rem
     st.rerun()
 
 
+def missing_inputs(pairs: list) -> str:
+    """비어 있는 입력의 이름을 쉼표로 이어 돌려준다(없으면 빈 문자열)."""
+    return ", ".join(name for name, value in pairs if not (value.strip() if isinstance(value, str) else value))
+
+
 NOTION_GUIDE = (
     "1. [notion.so/profile/integrations](https://www.notion.so/profile/integrations) 에서 **새 연결(New connection)** 을 만들어요. "
     "인증 방식은 **API token**, 워크스페이스는 본인 것을 고르면 돼요.\n"
@@ -249,12 +254,18 @@ def notion_dialog(info) -> None:
         st.warning("이미 만든 학습 공간이 있어요. 여기서 만들면 페이지가 하나 더 생겨요. 체크를 맞추려면 이 창을 닫고 'Notion과 동기화'를 눌러 주세요.")
     with st.expander("처음이라면: 3분 준비 방법", expanded=not remembered_token()):
         st.markdown(NOTION_GUIDE)
-    token = st.text_input("① 토큰", type="password", value=remembered_token(), placeholder="ntn_...")
-    remember = remember_box("remember_make")
-    link = st.text_input("② 학습 공간을 넣을 페이지 링크", value=st.session_state.get("notion_parent", ""),
-                         placeholder="https://www.notion.so/...")
-    agree = st.checkbox("내 Notion에 페이지를 새로 만드는 데 동의해요")
-    if st.button("학습 공간 만들기", type="primary", disabled=not (token and link and agree)):
+    # 폼으로 묶어, 입력 칸에서 Enter를 누르지 않아도 버튼을 누르는 순간의 값이 그대로 전달되게 한다
+    with st.form("notion_make_form", border=False):
+        token = st.text_input("① 토큰", type="password", value=remembered_token(), placeholder="ntn_...")
+        remember = remember_box("remember_make")
+        link = st.text_input("② 학습 공간을 넣을 페이지 링크", value=st.session_state.get("notion_parent", ""),
+                             placeholder="https://www.notion.so/...")
+        agree = st.checkbox("내 Notion에 페이지를 새로 만드는 데 동의해요")
+        go = st.form_submit_button("학습 공간 만들기", type="primary")
+    missing = missing_inputs([("토큰", token), ("페이지 링크", link), ("동의 체크", agree)])
+    if go and missing:
+        st.error(f"아직 비어 있는 칸이 있어요: {missing}")
+    elif go:
         try:
             with st.spinner("Notion에 페이지를 만드는 중이에요…"):
                 made = notion.create_space(token, link, S, info)
@@ -275,13 +286,19 @@ def notion_dialog(info) -> None:
 @st.dialog("Notion과 동기화", width="large")
 def notion_sync_dialog(today_value, hours: float, active: bool) -> None:
     st.markdown("Notion에서 체크한 완료를 앱으로 가져오고, 진행률·오늘 브리핑·주차별 계획·주요 일정을 **같은 페이지에** 다시 써요. 새 페이지는 만들지 않아요.")
-    token = st.text_input("토큰", type="password", value=remembered_token(), placeholder="ntn_...")
-    remember = remember_box("remember_sync")
-    page = st.text_input("학습 공간 페이지 링크", value=(S.get("notion") or {}).get("url", ""),
-                         placeholder="앱이 만든 'OOO 학습 공간' 페이지의 링크",
-                         help="Notion에서 'OOO 학습 공간' 페이지를 열고 ⋯ → 링크 복사. 그 페이지를 넣어 둔 상위 페이지 링크가 아니에요.")
-    agree = st.checkbox("그 페이지의 브리핑·진행률·계획 항목을 앱이 고쳐 쓰는 데 동의해요")
-    if st.button("동기화하기", type="primary", disabled=not (token and page and agree)):
+    with st.form("notion_sync_form", border=False):
+        token = st.text_input("토큰", type="password", value=remembered_token(), placeholder="ntn_...",
+                              help="Notion 연결(integration)의 토큰이에요. 메모장에 적어 둔 값은 자동으로 들어오지 않으니 여기에 붙여 넣어 주세요.")
+        remember = remember_box("remember_sync")
+        page = st.text_input("학습 공간 페이지 링크", value=(S.get("notion") or {}).get("url", ""),
+                             placeholder="앱이 만든 'OOO 학습 공간' 페이지의 링크",
+                             help="Notion에서 'OOO 학습 공간' 페이지를 열고 ⋯ → 링크 복사. 그 페이지를 넣어 둔 상위 페이지 링크가 아니에요.")
+        agree = st.checkbox("그 페이지의 브리핑·진행률·계획 항목을 앱이 고쳐 쓰는 데 동의해요")
+        go = st.form_submit_button("동기화하기", type="primary")
+    missing = missing_inputs([("토큰", token), ("페이지 링크", page), ("동의 체크", agree)])
+    if go and missing:
+        st.error(f"아직 비어 있는 칸이 있어요: {missing}")
+    elif go:
         try:
             with st.spinner("Notion을 읽고 다시 쓰는 중이에요…"):
                 run_sync(token, page, today_value, hours, active, remember)
@@ -830,9 +847,19 @@ with tab_space, st.container(border=True, key="card7"):
                 st.warning("확정된 시험일이 필요해요. '일정' 탭에서 확인하거나 직접 입력해 주세요.")
             if not hours:
                 st.warning("'프로필' 탭에 주당 공부 가능 시간을 입력해 주세요.")
-            required = st.number_input("강의·교재 총 분량을 안다면 필요 학습 시간 (선택, 모르면 0)", 0.0, 1000.0, 0.0, 5.0)
-            if st.button("계획 미리보기", type="primary", disabled=not ready):
-                do_plan(S, today)
+            required = st.number_input(
+                "강의·교재 총 분량을 안다면 필요 학습 시간 (선택, 모르면 0)", 0.0, 1000.0, 0.0, 5.0,
+                help="예: 강의가 총 20시간이면 20. 시험일까지 낼 수 있는 시간보다 많으면 미리보기 아래에 '시간이 모자라요' 경고가 떠요. "
+                     "계획 자체를 바꾸지는 않고, 0으로 두면 이 확인을 건너뛰어요.")
+            if st.button("계획 미리보기", type="primary"):
+                if ready:
+                    _note = do_plan(S, today)
+                    if not S.get("plan_preview"):
+                        st.error(_note)
+                else:
+                    st.error("미리보기를 만들려면 " + " / ".join(
+                        ([] if exam else ["확정된 시험일('일정' 탭)"]) + ([] if hours else ["주당 공부 가능 시간('프로필' 탭)"]))
+                        + "이 먼저 필요해요.")
             preview = S.get("plan_preview")
             if preview:
                 st.dataframe(pd.DataFrame(preview["rows"])[["week", "phase", "start", "end", "hours", "task"]].rename(
