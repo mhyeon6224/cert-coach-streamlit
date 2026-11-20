@@ -281,6 +281,9 @@ img.cc-avatar {{ object-fit: cover; background: #fff; border: 1px solid {LINE}; 
 .cc-banner .sp.a {{ top: -8px; left: 38%; }} .cc-banner .sp.b {{ top: -10px; right: 2px; }} .cc-banner .sp.c {{ top: -2px; left: 4px; }}
 @media (max-width: 760px) {{ .cc-banner {{ gap: 16px; }} .cc-banner img {{ width: 76px; height: 76px; }} .cc-banner .t {{ font-size: 30px; letter-spacing: 2px; }}
   .cc-banner .n {{ font-size: 22px; }} }}
+.cc-banner .f {{ position: relative; flex: none; line-height: 0; }}
+.cc-banner .moon {{ position: absolute; width: 38px; height: 38px; top: -16px; right: -20px; transform: rotate(-14deg); }}
+@media (max-width: 760px) {{ .cc-banner .moon {{ width: 24px; height: 24px; top: -14px; right: -6px; }} }}
 </style>
 """
 
@@ -317,7 +320,11 @@ def header(pills: list[tuple[str, bool]], today: str, user: str | None) -> None:
 
 def banner() -> None:
     """대시보드 맨 위 배너: 달달이 얼굴 + 손글씨 느낌의 서비스 이름."""
-    face = f'<img src="{FACE_BIG}" alt="달달이">' if FACE_BIG else ""
+    moon = ('<svg class="moon" viewBox="0 0 48 48" aria-hidden="true"><path d="M31 6a18 18 0 1 0 11 27A15 15 0 0 1 31 6z" fill="#f7cf5a" '
+            'stroke="#111" stroke-width="2.2" stroke-linejoin="round"/><circle cx="21" cy="25" r="1.6" fill="#111"/><circle cx="29" cy="29" r="1.6" fill="#111"/>'
+            '<path d="M22 32q3 2.5 6 1" fill="none" stroke="#111" stroke-width="1.8" stroke-linecap="round"/>'
+            '<circle cx="19" cy="30" r="2.2" fill="#f4a6a0" opacity=".8"/></svg>')
+    face = f'<span class="f"><img src="{FACE_BIG}" alt="달달이">{moon}</span>' if FACE_BIG else ""
     st.markdown(f'<div class="cc-banner">{face}<div class="w"><div class="t"><i class="sp a">✳</i><i class="sp b">✳</i>자격증 패스 코치</div>'
                 '<div class="n"><i class="sp c">✳</i>달달이</div></div></div>', unsafe_allow_html=True)
 

@@ -245,7 +245,11 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
         if YES.search(text):
             state["plan"], state["plan_preview"], state["pending"] = state["plan_preview"], None, None
             return ("학습 공간에 계획을 저장했어요. '계획' 탭에서 완료 체크를 하면 진행률과 지연이 계산돼요.\n\n"
-                    "다음 행동: 매일 \"오늘 뭐 공부해?\"라고 물어보세요. '계획' 탭에서 마크다운으로 내보낼 수도 있어요.")
+                    "다음에 할 수 있는 것\n"
+                    "- \"오늘 뭐 공부해?\" — 매일 오늘 할 일과 지연 확인\n"
+                    "- \"강의와 교재 추천해줘\" — 계획에 맞춰 볼 강의·교재 찾기\n"
+                    "- '일정' 탭 — 시험일·접수 마감을 캘린더에 넣기\n"
+                    "- '계획' 탭 — 완료 체크, Notion에 만들기, 마크다운 내보내기")
         if NO.search(text):
             state["plan_preview"], state["pending"] = None, None
             return "알겠어요. 계획은 저장하지 않았어요. 조건(주당 시간·시험일)을 바꾼 뒤 다시 \"학습 계획 세워줘\"라고 말해 주세요."
@@ -312,7 +316,11 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
             lines.append("공식 일정을 캘린더에 넣고 싶으면 '일정' 탭에서 **등록할 일정만 골라** 캘린더 파일을 받을 수 있어요. 동의 없이 자동 등록하지 않아요.")
         else:
             lines.append("아직 확인된 공식 시험일이 없어요. \"시험 일정 알려줘\"로 확인해 주세요.")
-        lines.append("다음 행동: \"학습 계획 세워줘\"")
+        lines.append("다음에 할 수 있는 것 (원하는 것부터 골라 주세요)\n"
+                     "- \"시험 일정 알려줘\" — 공식 접수·시험·발표일 확인\n"
+                     "- \"강의와 교재 추천해줘\" — 비용 선호에 맞춘 강의·교재·기출 자료\n"
+                     "- \"학습 계획 세워줘\" — 시험일까지 주차별 계획\n"
+                     "- \"취업 가이드 알려줘\" — 목표 직무·관심 공고 기준 준비 방향")
         return prefix + "\n\n".join(lines)
 
     if intent in ("registered", "exam_taken", "passed", "failed") and not state["target"].get("code"):

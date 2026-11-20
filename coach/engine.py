@@ -165,7 +165,11 @@ def recommend_markdown(result: dict) -> str:
     if result["practice_first"]:
         out.append(f"💡 솔직히 말하면: {result['practice_first']}")
     out += [f"_{n}_" for n in result["notices"]]
-    out.append("다음 행동: ① 일정이 궁금하면 \"1순위 시험 일정 알려줘\" ② 준비를 시작하려면 \"1순위로 준비할래\" ③ 자료가 궁금하면 \"강의와 교재 추천해줘\"")
+    out.append("다음에 할 수 있는 것 (원하는 것부터 골라 주세요)\n"
+               "- \"1순위로 준비할래\" — 목표 자격증으로 저장\n"
+               "- \"1순위 시험 일정 알려줘\" — 공식 접수·시험·발표일 확인\n"
+               "- \"강의와 교재 추천해줘\" — 강의·교재·기출 자료 찾기\n"
+               "- \"대안으로 준비할래\" — 대안 자격증으로 바꾸기")
     return "\n\n".join(out)
 
 
@@ -431,7 +435,8 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
         review.append("단일 의견(참고만)\n" + "\n".join(single))
     review.append(f"확인 범위: {len(hits)}개 페이지, {today.isoformat()} 확인" + (" · 일부 검색 실패" if failed else ""))
     out.append("\n\n".join(review))
-    out.append("다음 행동: \"시험 일정 알려줘\" 또는 \"학습 계획 세워줘\"")
+    out.append("다음에 할 수 있는 것\n- \"시험 일정 알려줘\" — 공식 일정 확인\n- \"학습 계획 세워줘\" — 이 자료로 주차별 계획 만들기\n"
+               "- '프로필' 탭 — 비용 선호·학습 방식을 바꾸면 다시 찾아요")
     return "\n\n".join(out)
 
 
