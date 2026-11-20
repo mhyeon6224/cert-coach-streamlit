@@ -135,13 +135,24 @@ def send(message: str) -> str:
     return reply
 
 
+def calendar_line(result: dict | None, error: str | None) -> str:
+    if error:
+        return f"주요 일정 달력: 못 함 — {error}"
+    if not result:
+        return ""
+    made = "새로 만들고 " if result["created"] else ""
+    return (f"주요 일정 달력: {made}일정 {result['added']}개 추가" + (f", 날짜 {result['updated']}개 수정" if result["updated"] else "")
+            if result["created"] or result["added"] or result["updated"] else "주요 일정 달력: 바뀐 것 없음")
+
+
 def notion_sync(token: str, link: str, today_value, hours: float, active: bool) -> list[str]:
     """스킬의 체크인 절차: Notion 체크 읽기 → 지연 계산 → 필요하면 재조정 → 진행률·브리핑·계획을 Notion에 다시 쓰기."""
     plan, lines = S["plan"], []
     blocks = notion.read_blocks(token, link)
     pulled = notion.pull_checks(blocks, plan)
     if not pulled["found"]:
-        raise notion.NotionError("그 페이지에서 주차별 계획 체크박스를 찾지 못했어요. 앱이 만든 '학습 공간' 페이지의 링크를 넣어 주세요.")
+        raise notion.NotionError("그 페이지에서 주차별 계획 체크박스를 찾지 못했어요. 앱이 만든 'OOO 학습 공간' 페이지의 링크를 넣어 주세요. "
+                                 "(그 페이지를 넣어 둔 상위 페이지 링크가 아니에요.)")
     done_now = [w for w, done in pulled["changed"] if done]
     undone = [w for w, done in pulled["changed"] if not done]
     lines.append("Notion 체크 가져오기: " + (f"완료 {len(done_now)}개" + (f", 완료 취소 {len(undone)}개" if undone else "") if pulled["changed"] else "바뀐 것 없음"))
@@ -155,58 +166,77 @@ def notion_sync(token: str, link: str, today_value, hours: float, active: bool) 
     lines.append(f"Notion에 다시 쓰기: {pushed['updated']}개 항목 갱신(오늘 브리핑·진행률·주차별 계획)")
     if pushed["missing_weeks"]:
         lines.append(f"확인 필요: 계획의 {pushed['missing_weeks']}개 주차는 그 페이지에 없어요. 계획을 새로 만들었다면 학습 공간도 새로 만들어 주세요.")
+    try:
+        lines.append(calendar_line(notion.ensure_calendar(token, notion.page_id_from(link), blocks, S["target"]), None))
+    except notion.NotionError as error:
+        lines.append(calendar_line(None, str(error)))
     return lines
 
 
-@st.dialog("Notion 학습 공간", width="large")
-def notion_dialog(info, today_value, hours: float, active: bool) -> None:
+def run_sync(token: str, link: str, today_value, hours: float, active: bool) -> None:
+    """동기화하고 결과를 화면 위 알림으로 남긴 뒤 다시 그린다(진행률 타일·표에 바로 반영)."""
+    lines = notion_sync(token, link, today_value, hours, active)
+    st.session_state["notion_token"] = token.strip()
+    S["notion"] = {"url": link.strip()}
+    st.session_state["flash"] = "Notion과 동기화했어요.\n\n" + "\n".join(f"- {line}" for line in lines if line)
+    st.rerun()
+
+
+NOTION_GUIDE = (
+    "1. [notion.so/profile/integrations](https://www.notion.so/profile/integrations) 에서 **새 연결(New connection)** 을 만들어요. "
+    "인증 방식은 **API token**, 워크스페이스는 본인 것을 고르면 돼요.\n"
+    "2. 만들어진 화면에서 **토큰** 을 복사해요. `ntn_`로 시작해요.\n"
+    "3. 학습 공간을 넣고 싶은 Notion 페이지를 **연 뒤**, 본문 오른쪽 위 **⋯ → 연결(Connections)** 에서 방금 만든 연결을 추가해요. "
+    "이 단계를 빼먹으면 '접근 권한이 없어요'가 나와요.\n"
+    "4. 같은 페이지에서 **⋯ → 링크 복사** 로 페이지 주소를 복사해요.")
+
+
+@st.dialog("Notion에 학습 공간 만들기", width="large")
+def notion_dialog(info) -> None:
     st.markdown(ui.badges([("내 Notion에만 저장", "navy"), ("토큰은 DB에 저장하지 않아요", "good")]), unsafe_allow_html=True)
-    linked = (S.get("notion") or {}).get("url", "")
-    with st.expander("처음이라면: 3분 준비 방법", expanded=not (st.session_state.get("notion_token") or linked)):
-        st.markdown(
-            "1. [notion.so/profile/integrations](https://www.notion.so/profile/integrations) 에서 **새 연결(New connection)** 을 만들어요. "
-            "인증 방식은 **API token**, 워크스페이스는 본인 것을 고르면 돼요.\n"
-            "2. 만들어진 화면에서 **토큰** 을 복사해요. `ntn_`로 시작해요.\n"
-            "3. 학습 공간을 넣고 싶은 Notion 페이지를 **연 뒤**, 본문 오른쪽 위 **⋯ → 연결(Connections)** 에서 방금 만든 연결을 추가해요. "
-            "이 단계를 빼먹으면 '접근 권한이 없어요'가 나와요.\n"
-            "4. 같은 페이지에서 **⋯ → 링크 복사** 로 페이지 주소를 복사해요.")
-    token = st.text_input("토큰", type="password", value=st.session_state.get("notion_token", ""),
+    st.markdown("고른 페이지 아래에 **학습 공간 페이지를 새로 하나** 만들어요. 주차별 계획(체크박스)과 **주요 일정 달력**이 들어가요.")
+    if (S.get("notion") or {}).get("url"):
+        st.warning("이미 만든 학습 공간이 있어요. 여기서 만들면 페이지가 하나 더 생겨요. 체크를 맞추려면 이 창을 닫고 'Notion과 동기화'를 눌러 주세요.")
+    with st.expander("처음이라면: 3분 준비 방법", expanded=not st.session_state.get("notion_token")):
+        st.markdown(NOTION_GUIDE)
+    token = st.text_input("① 토큰", type="password", value=st.session_state.get("notion_token", ""),
                           placeholder="ntn_...", help="이 브라우저 창에서만 기억하고, 서버 DB에는 저장하지 않아요.")
-    make, sync = st.tabs(["새로 만들기", "동기화 (체크 가져오기 · 계획 다시 쓰기)"])
-    with make:
-        st.caption("고른 페이지 아래에 학습 공간 페이지를 새로 만들어요.")
-        link = st.text_input("학습 공간을 넣을 페이지 링크", value=st.session_state.get("notion_parent", ""),
-                             placeholder="https://www.notion.so/...")
-        agree = st.checkbox("내 Notion에 페이지를 새로 만드는 데 동의해요")
-        if st.button("학습 공간 만들기", type="primary", disabled=not (token and link and agree)):
-            try:
-                with st.spinner("Notion에 페이지를 만드는 중이에요…"):
-                    url = notion.create_space(token, link, S, info)
-                st.session_state["notion_token"], st.session_state["notion_parent"] = token.strip(), link.strip()
-                S["notion"] = {"url": url}
-                st.success("페이지를 만들었어요. 완료는 Notion에서 체크하고, 이 창의 '동기화'로 맞추면 돼요.")
-                if url:
-                    st.link_button("Notion에서 열기", url)
-            except notion.NotionError as error:
-                st.error(f"만들지 못했어요. {error}")
-    with sync:
-        st.caption("Notion에서 체크한 완료를 앱으로 가져와 진행률·지연을 다시 계산하고, 지연이 기준(3일 또는 주당 시간의 50%)을 넘으면 "
-                   "남은 기간으로 재조정한 뒤, 오늘 브리핑·진행률·주차별 계획을 같은 페이지에 다시 써요. 새 페이지는 만들지 않아요.")
-        page = st.text_input("학습 공간 페이지 링크", value=linked, placeholder="앱이 만든 'OOO 학습 공간' 페이지의 링크",
-                             help="이 앱에서 만들었다면 자동으로 채워져요. 비어 있으면 Notion에서 그 페이지의 링크를 복사해 넣어 주세요.")
-        agree_sync = st.checkbox("그 페이지의 브리핑·진행률·계획 항목을 앱이 고쳐 쓰는 데 동의해요")
-        if st.button("Notion과 동기화", type="primary", disabled=not (token and page and agree_sync)):
-            try:
-                with st.spinner("Notion을 읽고 다시 쓰는 중이에요…"):
-                    lines = notion_sync(token, page, today_value, hours, active)
-                st.session_state["notion_token"] = token.strip()
-                S["notion"] = {"url": page.strip()}
-                st.success("동기화했어요. 창을 닫으면 앱의 진행률에도 반영돼 있어요.")
-                for line in lines:
-                    st.markdown(f"- {line}")
-            except notion.NotionError as error:
-                st.error(f"동기화하지 못했어요. {error}")
+    link = st.text_input("② 학습 공간을 넣을 페이지 링크", value=st.session_state.get("notion_parent", ""),
+                         placeholder="https://www.notion.so/...")
+    agree = st.checkbox("내 Notion에 페이지를 새로 만드는 데 동의해요")
+    if st.button("학습 공간 만들기", type="primary", disabled=not (token and link and agree)):
+        try:
+            with st.spinner("Notion에 페이지를 만드는 중이에요…"):
+                made = notion.create_space(token, link, S, info)
+            st.session_state["notion_token"], st.session_state["notion_parent"] = token.strip(), link.strip()
+            S["notion"] = {"url": made["url"]}
+            st.success("페이지를 만들었어요. 완료는 Notion에서 체크하고, 계획 탭의 'Notion과 동기화'로 맞추면 돼요.")
+            note = calendar_line(made["calendar"], made["calendar_error"])
+            if note:
+                st.markdown(f"- {note}")
+            st.caption("달력으로 보려면 Notion에서 '주요 일정' 표 위의 + 를 눌러 **Calendar(캘린더)** 보기를 추가해 주세요. (보기 추가는 Notion이 앱에 허용하지 않아요.)")
+            if made["url"]:
+                st.link_button("Notion에서 열기", made["url"])
+        except notion.NotionError as error:
+            st.error(f"만들지 못했어요. {error}")
     st.caption("실패해도 앱 안의 학습 공간과 .md 내보내기는 그대로 쓸 수 있어요.")
+
+
+@st.dialog("Notion과 동기화", width="large")
+def notion_sync_dialog(today_value, hours: float, active: bool) -> None:
+    st.markdown("Notion에서 체크한 완료를 앱으로 가져오고, 진행률·오늘 브리핑·주차별 계획·주요 일정을 **같은 페이지에** 다시 써요. 새 페이지는 만들지 않아요.")
+    token = st.text_input("토큰", type="password", value=st.session_state.get("notion_token", ""), placeholder="ntn_...",
+                          help="이 브라우저 창에서만 기억하고, 서버 DB에는 저장하지 않아요.")
+    page = st.text_input("학습 공간 페이지 링크", value=(S.get("notion") or {}).get("url", ""),
+                         placeholder="앱이 만든 'OOO 학습 공간' 페이지의 링크",
+                         help="Notion에서 'OOO 학습 공간' 페이지를 열고 ⋯ → 링크 복사. 그 페이지를 넣어 둔 상위 페이지 링크가 아니에요.")
+    agree = st.checkbox("그 페이지의 브리핑·진행률·계획 항목을 앱이 고쳐 쓰는 데 동의해요")
+    if st.button("동기화하기", type="primary", disabled=not (token and page and agree)):
+        try:
+            with st.spinner("Notion을 읽고 다시 쓰는 중이에요…"):
+                run_sync(token, page, today_value, hours, active)
+        except notion.NotionError as error:
+            st.error(f"동기화하지 못했어요. {error}")
 
 
 # ------------------------------------------------------------------ 사이드바
@@ -588,9 +618,7 @@ with tab_space, st.container(border=True, key="card7"):
                 for row, new in zip(plan["rows"], new_rows):
                     row["done"], row["memo"] = bool(new["done"]), str(new["memo"] or "")
                 st.rerun()
-            c1, c2, c3, c4 = st.columns(4)
-            if c4.button("Notion 만들기·동기화", type="primary", use_container_width=True):
-                notion_dialog(info if active else None, today, hours, active)
+            c1, c2, c3 = st.columns(3)
             if c1.button("남은 기간으로 재조정", disabled=not active, use_container_width=True):
                 outcome = planner.readjust(plan, today, hours or plan["weekly_hours"], f"지연 {info['delay_days']:g}일")
                 st.session_state["flash"] = outcome["message"]
@@ -602,6 +630,25 @@ with tab_space, st.container(border=True, key="card7"):
                 st.rerun()
             if plan["history"]:
                 st.caption("재조정 이력: " + " / ".join(plan["history"]))
+            st.divider()
+            ui.label("Notion 학습 공간")
+            linked_url = (S.get("notion") or {}).get("url", "")
+            st.caption((f"연결된 페이지가 있어요. Notion에서 완료를 체크한 뒤 '동기화'를 누르면 앱의 진행률·지연·재조정과 Notion 페이지가 맞춰져요."
+                        if linked_url else "아직 연결된 페이지가 없어요. 처음이면 '새로 만들기', 이미 만든 페이지가 있으면 '동기화'에서 그 페이지 링크를 넣어 주세요."))
+            n1, n2, n3 = st.columns(3)
+            if n1.button("Notion과 동기화", type="primary", use_container_width=True):
+                if st.session_state.get("notion_token") and linked_url:
+                    try:
+                        with st.spinner("Notion을 읽고 다시 쓰는 중이에요…"):
+                            run_sync(st.session_state["notion_token"], linked_url, today, hours, active)
+                    except notion.NotionError as error:
+                        st.error(f"동기화하지 못했어요. {error}")
+                else:
+                    notion_sync_dialog(today, hours, active)
+            if n2.button("Notion에 새로 만들기", use_container_width=True):
+                notion_dialog(info if active else None)
+            if linked_url:
+                n3.link_button("Notion 페이지 열기", linked_url, use_container_width=True)
         elif not active:
             st.info(f"현재 상태는 '{target['state']}'예요. 새 목표가 정해지면 다시 계획을 세울 수 있어요.")
         else:

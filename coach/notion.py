@@ -105,10 +105,10 @@ def build_blocks(state: dict, info: dict | None) -> list[dict]:
     return blocks[:100]  # Notion은 한 번에 블록 100개까지 받는다
 
 
-def create_space(token: str, parent_link: str, state: dict, info: dict | None) -> str:
-    """학습 공간 페이지를 만들고 그 페이지 주소를 돌려준다."""
+def create_space(token: str, parent_link: str, state: dict, info: dict | None) -> dict:
+    """학습 공간 페이지를 만든다. 반환: {"url": 페이지 주소, "calendar": 달력 결과 또는 None, "calendar_error": 실패 이유 또는 None}"""
     if not token_looks_valid(token):
-        raise NotionError("토큰 형식이 아니에요. 'ntn_' 또는 'secret_'로 시작하는 Internal Integration Secret을 넣어 주세요.")
+        raise NotionError("토큰 형식이 아니에요. 'ntn_' 또는 'secret_'로 시작하는 토큰을 넣어 주세요.")
     parent = page_id_from(parent_link)
     if not parent:
         raise NotionError("페이지 링크에서 페이지 ID를 찾지 못했어요. Notion 페이지의 '링크 복사' 주소를 그대로 붙여 넣어 주세요.")
@@ -119,17 +119,82 @@ def create_space(token: str, parent_link: str, state: dict, info: dict | None) -
         response = requests.post(f"{API}/pages", headers=_headers(token), json=body, timeout=20)
     except requests.RequestException:
         raise NotionError("Notion 서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.") from None
-    if response.status_code == 200:
-        return response.json().get("url", "")
-    code = (response.json() if response.headers.get("content-type", "").startswith("application/json") else {}).get("code", "")
-    reasons = {
-        "unauthorized": "토큰이 맞지 않아요. Integration의 Secret을 다시 복사해 주세요.",
-        "object_not_found": "그 페이지에 접근 권한이 없어요. 페이지 오른쪽 위 ⋯ → 연결(Connections)에서 만든 Integration을 추가해 주세요.",
-        "restricted_resource": "Integration에 콘텐츠 쓰기 권한이 없어요. Integration 설정의 Capabilities에서 'Insert content'를 켜 주세요.",
-        "validation_error": "Notion이 페이지 형식을 받지 않았어요. 잠시 뒤 다시 시도해 주세요.",
-        "rate_limited": "요청이 너무 많아요. 잠시 뒤 다시 시도해 주세요.",
-    }
-    raise NotionError(reasons.get(code, f"페이지를 만들지 못했어요 (HTTP {response.status_code})."))
+    if response.status_code != 200:
+        code = (response.json() if response.headers.get("content-type", "").startswith("application/json") else {}).get("code", "")
+        reasons = {
+            "unauthorized": "토큰이 맞지 않아요. 토큰을 다시 복사해 주세요.",
+            "object_not_found": "그 페이지에 접근 권한이 없어요. 페이지를 연 뒤 오른쪽 위 ⋯ → 연결(Connections)에서 만든 연결을 추가해 주세요.",
+            "restricted_resource": "연결에 콘텐츠 쓰기 권한이 없어요. 연결 설정의 Capabilities에서 'Insert content'를 켜 주세요.",
+            "validation_error": "Notion이 페이지 형식을 받지 않았어요. 잠시 뒤 다시 시도해 주세요.",
+            "rate_limited": "요청이 너무 많아요. 잠시 뒤 다시 시도해 주세요.",
+        }
+        raise NotionError(reasons.get(code, f"페이지를 만들지 못했어요 (HTTP {response.status_code})."))
+    data = response.json()
+    result = {"url": data.get("url", ""), "calendar": None, "calendar_error": None}
+    try:  # 페이지는 이미 만들어졌으므로, 달력 실패는 따로 알린다
+        result["calendar"] = ensure_calendar(token, data["id"], [], state["target"])
+    except NotionError as error:
+        result["calendar_error"] = str(error)
+    return result
+
+
+# ---------------------------------------------------------------- 주요 일정 달력 (학습 공간 안의 데이터베이스)
+CAL_TITLE = "주요 일정"
+
+
+def calendar_events(target: dict) -> list[dict]:
+    """공식 확인된 날짜만 달력에 넣는다. 날짜를 모르는 일정은 날짜 없이 '확인 필요'로 남긴다."""
+    name, basis = target.get("name") or "자격증", target.get("basis") or "미확인"
+    events = []
+    for key, label, kind in (("reg_start", "원서접수 시작", "접수"), ("reg_end", "원서접수 마감", "접수"),
+                             ("exam_date", "시험일", "시험"), ("result_date", "합격자 발표", "발표")):
+        if target.get(key):
+            events.append({"title": f"[{name}] {label}", "date": target[key], "kind": kind, "memo": f"근거: {basis}"})
+    events.append({"title": f"[{name}] 수험표 출력·고사장(자리) 공지", "date": None, "kind": "확인 필요",
+                   "memo": "날짜 미확인 — 주관기관 공지에서 확인한 뒤 날짜를 직접 넣어 주세요"})
+    return events
+
+
+def _event_props(event: dict) -> dict:
+    props = {"일정": {"title": [_text(event["title"])]}, "종류": {"select": {"name": event["kind"]}},
+             "메모": {"rich_text": [_text(event["memo"])]}}
+    if event["date"]:
+        props["날짜"] = {"date": {"start": event["date"]}}
+    return props
+
+
+def ensure_calendar(token: str, page_id: str, blocks: list[dict], target: dict) -> dict:
+    """학습 공간 페이지 안에 '주요 일정' 데이터베이스를 만들거나, 이미 있으면 빠진 일정을 넣고 바뀐 날짜를 고친다."""
+    existing: dict[str, tuple[str, str | None]] = {}
+    found = next((b for b in blocks if b.get("type") == "child_database" and (b.get("child_database") or {}).get("title") == CAL_TITLE), None)
+    created = False
+    if found:
+        database = found["id"]
+        rows = _request("POST", f"{API}/databases/{database}/query", token, json={"page_size": 100}).get("results", [])
+        for row in rows:
+            props = row.get("properties", {})
+            title = "".join(t.get("plain_text", "") for t in (props.get("일정") or {}).get("title", []))
+            existing[title] = (row["id"], ((props.get("날짜") or {}).get("date") or {}).get("start"))
+    else:
+        database = _request("POST", f"{API}/databases", token, json={
+            "parent": {"type": "page_id", "page_id": page_id}, "is_inline": True,
+            "title": [_text(CAL_TITLE)], "icon": {"type": "emoji", "emoji": "🗓"},
+            "properties": {"일정": {"title": {}}, "날짜": {"date": {}}, "메모": {"rich_text": {}},
+                           "종류": {"select": {"options": [{"name": "접수", "color": "blue"}, {"name": "시험", "color": "red"},
+                                                           {"name": "발표", "color": "green"}, {"name": "확인 필요", "color": "gray"}]}}}})["id"]
+        created = True
+    added = updated = 0
+    for event in calendar_events(target):
+        if event["title"] not in existing:
+            _request("POST", f"{API}/pages", token, json={"parent": {"database_id": database}, "properties": _event_props(event)})
+            added += 1
+        elif event["date"] and existing[event["title"]][1] != event["date"]:
+            _request("PATCH", f"{API}/pages/{existing[event['title']][0]}", token, json={"properties": {"날짜": {"date": {"start": event["date"]}}}})
+            updated += 1
+        else:
+            continue
+        time.sleep(0.35)
+    return {"created": created, "added": added, "updated": updated}
 
 
 # ---------------------------------------------------------------- 동기화 (Notion ↔ 앱)
