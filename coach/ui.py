@@ -215,6 +215,42 @@ button:focus-visible, [data-testid="stTab"]:focus-visible {{ outline: 2px solid 
 /* Dialog · Tooltip · Alert */
 div[role="dialog"] {{ border: 1px solid {LINE}; box-shadow: 0 12px 32px rgba(12,42,79,.18); }}
 [data-testid="stAlert"] {{ border: 1px solid {LINE}; }}
+
+/* ================= 상단바 (GitHub형) ================= */
+.cc-header, [class*="st-key-topbar"] {{ background: #f6f8fa; box-shadow: 0 0 0 100vmax #f6f8fa; clip-path: inset(0 -100vmax -1px); border-top: 0;
+  border-bottom: 1px solid {LINE}; padding: 10px 0 10px; margin: 0 0 6px; }}
+.cc-header > div:first-child {{ padding-left: 40px; }}
+.cc-brand {{ display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-left: 40px; min-height: 36px; }}
+.cc-header .cc-brand {{ padding-left: 0; }}
+.cc-mark {{ width: 30px; height: 30px; flex: none; }}
+.cc-name {{ font-size: 15px; font-weight: 700; color: {INK}; }}
+.cc-slash {{ color: #9aa5b1; }} .cc-page {{ font-size: 15px; font-weight: 500; color: {MUTED}; }}
+.cc-brand .cc-pills {{ margin-left: 14px; }}
+.cc-pill {{ background: #fff; padding: 3px 9px; }}
+[class*="st-key-topbar"] [data-testid="stPopover"] button {{ border-radius: 6px !important; background: #fff; border: 1px solid #d1d9e0; color: {INK}; font-weight: 700; min-height: 34px; }}
+[class*="st-key-topbar"] [data-testid="stPopover"] button [data-testid="stIconMaterial"] {{ color: {BLUE}; }}
+.cc-greet {{ margin: 10px 0 12px; }}
+.cc-greet h1 {{ font-size: 24px !important; font-weight: 700 !important; color: {INK}; padding: 0 !important; margin: 0 !important; }}
+.cc-greet p {{ font-size: 13px; color: {MUTED}; margin: 4px 0 0; }}
+.cc-prof {{ display: flex; align-items: center; gap: 12px; padding: 4px 0 10px; border-bottom: 1px solid {LINE}; margin-bottom: 10px; }}
+.cc-face {{ width: 40px; height: 40px; border-radius: 50%; background: {BLUE}; color: #fff; font-weight: 700; display: grid; place-items: center; flex: none; }}
+.cc-prof .t {{ font-weight: 700; color: {INK}; }} .cc-prof .s {{ font-size: 12px; color: {MUTED}; }}
+.cc-avatar {{ border-radius: 50% !important; }}
+
+/* ================= 대화 프로필 아이콘 ================= */
+[data-testid="stChatMessage"] {{ gap: 10px; background: transparent !important; border: 0 !important; padding: 4px 0; max-width: 100%; align-items: flex-start; }}
+[data-testid="stChatMessage"] [data-testid^="stChatMessageAvatar"] {{ display: flex !important; width: 32px; height: 32px; border-radius: 50% !important;
+  background: {BLUE} !important; color: #fff !important; flex: none; align-items: center; justify-content: center; border: 0; }}
+[data-testid="stChatMessage"] [data-testid^="stChatMessageAvatar"] * {{ color: #fff !important; }}
+[data-testid="stChatMessageContent"] {{ background: #fff; border: 1px solid {LINE}; border-radius: {R}; padding: 10px 14px; flex: 0 1 auto; }}
+[class*="st-key-msg-user"] [data-testid="stChatMessage"] {{ flex-direction: row-reverse; width: 100%; margin-left: 0; }}
+[class*="st-key-msg-user"] [data-testid="stChatMessage"] [data-testid^="stChatMessageAvatar"] {{ background: #57606a !important; }}
+[class*="st-key-msg-user"] [data-testid="stChatMessageContent"] {{ background: {BLUE}; border-color: {BLUE}; }}
+[class*="st-key-msg-user"] [data-testid="stChatMessageContent"] p {{ color: #fff; }}
+[class*="st-key-msg-user"] [data-testid="stChatMessage"] {{ justify-content: flex-start; }}
+[data-testid="stChatMessageContent"] {{ margin: 0 !important; }}
+/* Streamlit 기본 도구 모음(Deploy 등)은 숨겨 상단바와 겹치지 않게 한다 */
+[data-testid="stAppDeployButton"], [data-testid="stMainMenu"], [data-testid="stToolbarActions"], [data-testid="stStatusWidget"] {{ display: none !important; }}
 </style>
 """
 
@@ -223,19 +259,37 @@ def inject() -> None:
     st.markdown(CSS, unsafe_allow_html=True)
 
 
-def header(pills: list[tuple[str, bool]], today: str, user: str | None) -> None:
+MARK = ('<svg class="cc-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="6" fill="#123a6b"/>'
+        '<path d="M9 16.5l4.5 4.5L23 11.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>')
+CHAT_ICON = ('<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#fff" d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-4.3 3.4A.5.5 0 0 1 4 20V17a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/></svg>')
+
+
+def brand_html(pills: list[tuple[str, bool]], page: str = "대시보드") -> str:
+    """상단바 왼쪽: 로고 + 서비스 이름 / 현재 화면, 그 옆 상태 칩."""
     pill_html = "".join(f'<span class="cc-pill{" on" if on else ""}">{escape(label)}</span>' for label, on in pills)
-    who = f"{escape(user)}님 · 자동 저장" if user else "로그인 전 · 창을 닫으면 사라져요"
-    st.markdown(
-        '<div class="cc-header"><div><div class="cc-logo">자격증 패스 코치</div>'
-        '<div class="cc-sub">처음 자격증 준비를 시작하는 분을 위한 대화형 코치</div></div>'
-        f'<div class="cc-pills">{pill_html}<span class="cc-pill">오늘 {escape(today)}</span><span class="cc-pill who">{who}</span></div></div>',
-        unsafe_allow_html=True)
+    return (f'<div class="cc-brand">{MARK}<span class="cc-name">자격증 패스 코치</span><span class="cc-slash">/</span>'
+            f'<span class="cc-page">{escape(page)}</span><span class="cc-pills">{pill_html}</span></div>')
+
+
+def header(pills: list[tuple[str, bool]], today: str, user: str | None) -> None:
+    """위젯 없는 상단바 (입장 화면용)."""
+    st.markdown(f'<div class="cc-header">{brand_html(pills, "입장")}</div>', unsafe_allow_html=True)
+
+
+def greeting(user: str | None, line: str) -> None:
+    name = f"{escape(user)}님" if user else "방문자님"
+    st.markdown(f'<div class="cc-greet"><h1>안녕하세요, {name}</h1><p>{escape(line)}</p></div>', unsafe_allow_html=True)
+
+
+def profile_card(user: str | None, note: str) -> None:
+    initial = escape((user or "G")[0].upper())
+    st.markdown(f'<div class="cc-prof"><span class="cc-face">{initial}</span><div><div class="t">{escape(user or "방문자")}</div>'
+                f'<div class="s">{escape(note)}</div></div></div>', unsafe_allow_html=True)
 
 
 def coach_head(online: bool) -> None:
     badge = '<span class="cc-online">AI 연결됨</span>' if online else '<span class="cc-online off">규칙 기반</span>'
-    st.markdown('<div class="cc-coach"><div class="cc-avatar">코</div><div><div class="t">자격증 패스 코치</div>'
+    st.markdown(f'<div class="cc-coach"><div class="cc-avatar">{CHAT_ICON}</div><div><div class="t">상담</div>'
                 f'<div class="s">추천 · 일정 · 학습 경로 · 진도 관리</div></div>{badge}</div>', unsafe_allow_html=True)
 
 

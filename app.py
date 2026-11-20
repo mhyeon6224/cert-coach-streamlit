@@ -63,6 +63,7 @@ GREETING = (
     "궁금한 단계부터 말해 주세요. 결과는 오른쪽 대시보드에 카드와 표로 정리돼요.\n\n"
     "일정·응시료는 공식 사이트에서 확인된 것만 보여 주고, 확인하지 못한 값은 **미확인**으로 남겨요."
 )
+AVATAR = {"assistant": ":material/school:", "user": ":material/person:"}
 EXAMPLES = ["데이터 분석 직무에 맞는 자격증 추천해줘", "1순위 시험 일정 알려줘", "1순위로 준비할래",
             "학습 계획 세워줘", "오늘 뭐 공부해?", "합격했어"]
 
@@ -162,49 +163,54 @@ def notion_dialog(info) -> None:
 
 
 # ------------------------------------------------------------------ 사이드바
-with st.sidebar:
+def account_panel() -> None:
+    """상단바 프로필 메뉴: 로그인·새 계정·로그아웃."""
     auth = st.session_state.get("auth")
-    with st.expander(f"내 계정 — {auth['nickname']}님" if auth else "내 계정 (다시 접속해도 이어서 하기)", expanded=not auth):
-        if auth:
-            st.caption(f"조건·계획·대화가 자동 저장돼요. 저장 위치: {store.label}")
-            if st.button("로그아웃", use_container_width=True):
-                for key in ("auth", "saved_digest"):
-                    st.session_state.pop(key, None)
-                st.session_state["S"] = new_state()
+    if auth:
+        ui.profile_card(auth["nickname"], "조건·계획·대화가 자동 저장돼요")
+        st.caption(f"저장 위치: {store.label}")
+        if st.button("로그아웃", use_container_width=True, key="logout"):
+            for key in ("auth", "saved_digest"):
+                st.session_state.pop(key, None)
+            st.session_state["S"] = new_state()
+            st.rerun()
+        return
+    ui.profile_card(None, "로그인하면 다시 접속해도 이어서 할 수 있어요")
+    with st.form("account", border=False):
+        nick = st.text_input("닉네임")
+        account_pw = st.text_input("계정 비밀번호", type="password", help="다른 서비스에서 쓰는 비밀번호는 쓰지 마세요.")
+        agree = st.checkbox("내 조건·계획·대화를 저장하는 데 동의해요 (새로 만들 때 필요)")
+        col_in, col_up = st.columns(2)
+        do_login = col_in.form_submit_button("로그인", type="primary", use_container_width=True)
+        do_signup = col_up.form_submit_button("새로 만들기", use_container_width=True)
+    try:
+        if do_login:
+            loaded, info = storage.login(store, nick.strip(), account_pw)
+            if info:
+                st.session_state["auth"] = info
+                st.session_state["S"] = merge_state(loaded)
+                st.session_state["flash"] = f"{info['nickname']}님, 지난번에 이어서 진행해요."
                 st.rerun()
-        else:
-            with st.form("account"):
-                nick = st.text_input("닉네임")
-                account_pw = st.text_input("계정 비밀번호", type="password", help="다른 서비스에서 쓰는 비밀번호는 쓰지 마세요.")
-                agree = st.checkbox("내 조건·계획·대화를 저장하는 데 동의해요 (새로 만들 때 필요)")
-                col_in, col_up = st.columns(2)
-                do_login = col_in.form_submit_button("로그인", use_container_width=True)
-                do_signup = col_up.form_submit_button("새로 만들기", use_container_width=True)
-            try:
-                if do_login:
-                    loaded, info = storage.login(store, nick.strip(), account_pw)
-                    if info:
-                        st.session_state["auth"] = info
-                        st.session_state["S"] = merge_state(loaded)
-                        st.session_state["flash"] = f"{info['nickname']}님, 지난번에 이어서 진행해요."
-                        st.rerun()
-                    st.error("닉네임 또는 비밀번호가 맞지 않아요.")
-                if do_signup:
-                    if not agree:
-                        st.error("저장에 동의해야 계정을 만들 수 있어요.")
-                    else:
-                        problem = storage.signup(store, nick.strip(), account_pw, snapshot(S))
-                        if problem:
-                            st.error(problem)
-                        else:
-                            _, info = storage.login(store, nick.strip(), account_pw)
-                            st.session_state["auth"] = info
-                            st.session_state["flash"] = "계정을 만들었어요. 지금부터 자동 저장돼요."
-                            st.rerun()
-            except storage.StoreError as error:
-                st.error(f"저장소에 연결하지 못했어요. {error}")
-            st.caption("계정 없이도 쓸 수 있어요. 그 경우 창을 닫으면 내용이 사라져요.")
+            st.error("닉네임 또는 비밀번호가 맞지 않아요.")
+        if do_signup:
+            if not agree:
+                st.error("저장에 동의해야 계정을 만들 수 있어요.")
+            else:
+                problem = storage.signup(store, nick.strip(), account_pw, snapshot(S))
+                if problem:
+                    st.error(problem)
+                else:
+                    _, info = storage.login(store, nick.strip(), account_pw)
+                    st.session_state["auth"] = info
+                    st.session_state["flash"] = "계정을 만들었어요. 지금부터 자동 저장돼요."
+                    st.rerun()
+    except storage.StoreError as error:
+        st.error(f"저장소에 연결하지 못했어요. {error}")
+    st.caption("계정 없이도 쓸 수 있어요. 그 경우 창을 닫으면 내용이 사라져요.")
 
+
+with st.sidebar:
+    st.header("설정")
     with st.expander("내 정보 파일로 저장·불러오기"):
         st.caption("계정을 쓰지 않을 때의 대안이에요. 원할 때만 파일로 내려받아 다음에 불러올 수 있어요.")
         if st.checkbox("내 조건·계획을 파일로 저장하는 데 동의해요"):
@@ -241,8 +247,12 @@ with st.sidebar:
 target = S["target"]
 P = S["profile"]
 auth = st.session_state.get("auth")
-ui.header([("AI 추천 켜짐" if llm else "규칙 기반 추천", bool(llm)), ("웹 검색 켜짐" if search else "공식 페이지 직접 수집", bool(search)),
-           ("클라우드 저장" if store.durable else "임시 저장", store.durable)], today.isoformat(), auth["nickname"] if auth else None)
+with st.container(key="topbar"):
+    bar_left, bar_right = st.columns([4.2, 1], vertical_alignment="center")
+    bar_left.markdown(ui.brand_html([("AI 추천" if llm else "규칙 기반 추천", bool(llm)), ("웹 검색" if search else "공식 페이지 직접 수집", bool(search)),
+                                     ("클라우드 저장" if store.durable else "임시 저장", store.durable)]), unsafe_allow_html=True)
+    with bar_right.popover(auth["nickname"] if auth else "로그인", icon=":material/account_circle:", use_container_width=True):
+        account_panel()
 if st.session_state.get("flash"):
     st.info(st.session_state.pop("flash"))
 
@@ -257,6 +267,14 @@ def queue(message: str) -> None:
     st.session_state["queued"] = message
 
 
+if _exam and target.get("name"):
+    _line = f"{target['name']} 시험까지 D-{(date.fromisoformat(_exam) - today).days}"
+elif target.get("name"):
+    _line = f"목표 {target['name']} · 시험일 미확인"
+else:
+    _line = "아직 목표 자격증이 없어요. 대화나 추천 탭에서 시작해 보세요."
+ui.greeting(auth["nickname"] if auth else None,
+            f"오늘 {today.isoformat()} · {_line}" + ("" if auth else " · 로그인 전이라 창을 닫으면 내용이 사라져요"))
 left, right = st.columns([1, 1.9], gap="medium")
 
 # ------------------------------------------------------------------ 대화 (왼쪽 패널)
@@ -264,18 +282,21 @@ with left:
     ui.coach_head(bool(llm))
     chat_box = st.container(height=560, key="cardchat")
     with chat_box:
-        for message in S["messages"]:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+        for index, message in enumerate(S["messages"]):
+            with st.container(key=f"msg-{message['role']}-{index}"):
+                with st.chat_message(message["role"], avatar=AVATAR[message["role"]]):
+                    st.markdown(message["content"])
     prompt = st.chat_input("예: 회계 직무에 맞는 자격증 추천해줘") or st.session_state.pop("queued", None)
     if prompt:
         with chat_box:
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            with st.chat_message("assistant"), st.spinner("확인하는 중이에요…"):
-                send(prompt)
+            with st.container(key="msg-user-new"):
+                with st.chat_message("user", avatar=AVATAR["user"]):
+                    st.markdown(prompt)
+            with st.container(key="msg-assistant-new"):
+                with st.chat_message("assistant", avatar=AVATAR["assistant"]), st.spinner("확인하는 중이에요…"):
+                    send(prompt)
         st.rerun()
-    st.caption("계정 로그인·파일 저장·데모 날짜는 왼쪽 위 » 를 눌러 여는 사이드바에 있어요.")
+    st.caption("로그인은 오른쪽 위 프로필 버튼, 파일 저장·데모 날짜는 왼쪽 위 » 메뉴에 있어요.")
 
 # ------------------------------------------------------------------ 대시보드 (오른쪽)
 with right:
@@ -437,7 +458,7 @@ with tab_sched, st.container(border=True, key="card5"):
                 if not gcfg:
                     st.caption("자동 등록(계정 연결)은 운영자가 Google 연동 설정을 마치면 켜져요. 지금은 아래 '일정 추가 화면 열기'를 쓸 수 있어요.")
                 elif not auth:
-                    st.info("자동 등록은 내 계정에 Google 연결을 저장해야 해서, 사이드바(왼쪽 위 »)의 '내 계정'에 로그인한 뒤 쓸 수 있어요.")
+                    st.info("자동 등록은 내 계정에 Google 연결을 저장해야 해서, 오른쪽 위 프로필 버튼으로 로그인한 뒤 쓸 수 있어요.")
                 else:
                     try:
                         linked = storage.get_meta(store, "gcal", auth["nickname"])

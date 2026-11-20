@@ -8,3 +8,6 @@ baseRadius = "2px"
 
 [browser]
 gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"
