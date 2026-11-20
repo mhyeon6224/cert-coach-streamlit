@@ -1,4 +1,4 @@
-"""화면 디자인: 흰 헤더 + 왼쪽 대화 패널 + 오른쪽 대시보드(알약 탭, 둥근 흰 카드, 표).
+"""화면 디자인: 흰 헤더 + 왼쪽 대화 패널 + 오른쪽 대시보드(각진 탭, 얇은 테두리 흰 카드, 표) · 네이비 계열.
 
 Streamlit 기본 위젯을 shadcn/ui의 Card · Badge · Button · Tabs · Alert · Dialog 모양에 맞춰 CSS로 다듬고,
 위젯으로 표현하기 어려운 조각(헤더, 요약 타일, 배지, 표)은 HTML로 그린다.
@@ -10,7 +10,8 @@ from html import escape
 
 import streamlit as st
 
-BLUE, INK, BG, LINE, MUTED, SOFT = "#0b63ce", "#111418", "#f3f4f6", "#e5e7eb", "#6b7280", "#f6f7f9"
+BLUE, INK, BG, LINE, MUTED, SOFT = "#123a6b", "#1d2733", "#f5f7fa", "#dde4ec", "#66737f", "#f3f6f9"
+SEA, R = "#1f73c4", "2px"  # 강조색, 모서리 반경(각진 모양)
 
 CSS = f"""
 <style>
@@ -33,21 +34,21 @@ header[data-testid="stHeader"] {{ background: transparent; height: 0; }}
 .cc-logo {{ font-size: 24px; font-weight: 900; color: {INK}; letter-spacing: -.3px; line-height: 1.2; }}
 .cc-sub {{ color: {MUTED}; font-size: 13px; margin-top: 2px; }}
 .cc-pills {{ display: flex; gap: 6px; flex-wrap: wrap; }}
-.cc-pill {{ border: 1px solid {LINE}; background: {SOFT}; border-radius: 999px; padding: 4px 12px; font-size: 12px; color: {MUTED}; white-space: nowrap; }}
-.cc-pill.on {{ background: #e8f1fd; border-color: #c9defa; color: {BLUE}; font-weight: 700; }}
+.cc-pill {{ border: 1px solid {LINE}; background: {SOFT}; border-radius: {R}; padding: 4px 12px; font-size: 12px; color: {MUTED}; white-space: nowrap; }}
+.cc-pill.on {{ background: #e8f1fb; border-color: #c7dcf3; color: {BLUE}; font-weight: 700; }}
 .cc-pill.who {{ background: #fff; color: {INK}; font-weight: 700; }}
 
 /* ---------- 코치 머리글 (대화 패널) ---------- */
-.cc-coach {{ display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid {LINE}; border-radius: 14px; padding: 12px 14px; }}
-.cc-avatar {{ width: 40px; height: 40px; border-radius: 50%; background: {BLUE}; color: #fff; font-weight: 900; display: grid; place-items: center; flex: none; }}
+.cc-coach {{ display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid {LINE}; border-radius: {R}; padding: 12px 14px; }}
+.cc-avatar {{ width: 40px; height: 40px; border-radius: {R}; background: {BLUE}; color: #fff; font-weight: 900; display: grid; place-items: center; flex: none; }}
 .cc-coach .t {{ font-weight: 900; font-size: 15px; color: {INK}; }}
 .cc-coach .s {{ font-size: 12px; color: {MUTED}; }}
-.cc-online {{ margin-left: auto; background: #e8f7ee; color: #1f8a4c; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 700; white-space: nowrap; }}
+.cc-online {{ margin-left: auto; background: #e8f7ee; color: #1f8a4c; border-radius: {R}; padding: 3px 10px; font-size: 12px; font-weight: 700; white-space: nowrap; }}
 .cc-online.off {{ background: {SOFT}; color: {MUTED}; }}
 
 /* ---------- 요약 타일 ---------- */
 .cc-tiles {{ display: grid; grid-template-columns: 1.7fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 4px; }}
-.cc-tile {{ background: #fff; border: 1px solid {LINE}; border-radius: 14px; padding: 12px 14px; min-width: 0; }}
+.cc-tile {{ background: #fff; border: 1px solid {LINE}; border-radius: {R}; padding: 12px 14px; min-width: 0; }}
 .cc-tile .k {{ font-size: 12px; color: {MUTED}; }}
 .cc-tile .v {{ font-size: 20px; font-weight: 900; color: {INK}; line-height: 1.3; word-break: keep-all; }}
 .cc-tile .n {{ font-size: 12px; color: {MUTED}; }}
@@ -57,14 +58,14 @@ header[data-testid="stHeader"] {{ background: transparent; height: 0; }}
 /* ---------- 카드 안 제목 ---------- */
 .cc-sh {{ margin: 2px 0 10px; }}
 .cc-sh h2 {{ font-size: 18px !important; font-weight: 900 !important; color: {INK}; margin: 0; padding: 0; }}
-.cc-sh span {{ font-size: 12px; color: {MUTED}; }}
+.cc-sh > span {{ font-size: 12px; color: {MUTED}; }}
 .cc-label {{ font-size: 12px; font-weight: 700; color: {BLUE}; margin: 14px 0 6px; }}
 .cc-rank {{ display: flex; align-items: baseline; gap: 10px; margin: 6px 0 8px; flex-wrap: wrap; }}
 .cc-rank .r {{ color: {BLUE}; font-weight: 900; font-size: 15px; }}
 .cc-rank .n {{ font-size: 26px; font-weight: 900; color: {INK}; letter-spacing: -.3px; }}
-.cc-box {{ background: {SOFT}; border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.65; margin: 6px 0; }}
+.cc-box {{ background: {SOFT}; border-radius: {R}; padding: 12px 14px; font-size: 14px; line-height: 1.65; margin: 6px 0; }}
 .cc-box b {{ color: {INK}; }}
-.cc-box.blue {{ background: #e8f1fd; }}
+.cc-box.blue {{ background: #e8f1fb; }}
 .cc-box.green {{ background: #e6f6ec; }}
 .cc-box.red {{ background: #fde8e8; }}
 .cc-box .h {{ font-size: 12px; font-weight: 700; margin-bottom: 2px; }}
@@ -75,10 +76,10 @@ header[data-testid="stHeader"] {{ background: transparent; height: 0; }}
 @media (max-width: 760px) {{ .cc-kv {{ grid-template-columns: 1fr; }} }}
 
 /* ---------- 배지 ---------- */
-.cc-badge {{ display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 700; margin-right: 6px; white-space: nowrap; }}
+.cc-badge {{ display: inline-block; border-radius: {R}; padding: 2px 10px; font-size: 12px; font-weight: 700; margin-right: 6px; white-space: nowrap; }}
 .cc-badge.navy {{ background: {INK}; color: #fff; }}
 .cc-badge.best {{ background: {BLUE}; color: #fff; }}
-.cc-badge.sky {{ background: #e8f1fd; color: {BLUE}; }}
+.cc-badge.sky {{ background: #e8f1fb; color: {BLUE}; }}
 .cc-badge.warn {{ background: #fdf3e4; color: #b56a0f; }}
 .cc-badge.good {{ background: #e6f6ec; color: #1f8a4c; }}
 .cc-badge.mute {{ background: {SOFT}; color: {MUTED}; }}
@@ -87,7 +88,7 @@ header[data-testid="stHeader"] {{ background: transparent; height: 0; }}
 .cc-foot {{ text-align: center; color: {MUTED}; font-size: 12px; padding: 28px 0 12px; }}
 
 /* ---------- 표 ---------- */
-.cc-table {{ width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; border: 1px solid {LINE}; border-radius: 10px; overflow: hidden; margin: 6px 0; }}
+.cc-table {{ width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; border: 1px solid {LINE}; border-radius: {R}; overflow: hidden; margin: 6px 0; }}
 .cc-table th {{ background: {SOFT}; color: {MUTED}; font-weight: 700; text-align: left; padding: 9px 12px; border-bottom: 1px solid {LINE}; white-space: nowrap; }}
 .cc-table td {{ padding: 10px 12px; border-bottom: 1px solid {LINE}; background: #fff; vertical-align: top; line-height: 1.55; }}
 .cc-table tr:last-child td {{ border-bottom: 0; }}
@@ -100,13 +101,13 @@ header[data-testid="stHeader"] {{ background: transparent; height: 0; }}
 
 /* ---------- 카드 (테두리 컨테이너) ---------- */
 [data-testid="stVerticalBlockBorderWrapper"], [class*="st-key-card"] {{
-  background: #fff; border: 1px solid {LINE} !important; border-radius: 14px !important; box-shadow: 0 1px 2px rgba(16,24,40,.04); }}
-[data-testid="stExpander"] details {{ background: #fff; border: 1px solid {LINE}; border-radius: 12px; }}
-[data-testid="stForm"] {{ background: #fff; border: 1px solid {LINE}; border-radius: 14px; }}
+  background: #fff; border: 1px solid {LINE} !important; border-radius: {R} !important; box-shadow: 0 1px 2px rgba(16,24,40,.04); }}
+[data-testid="stExpander"] details {{ background: #fff; border: 1px solid {LINE}; border-radius: {R}; }}
+[data-testid="stForm"] {{ background: #fff; border: 1px solid {LINE}; border-radius: {R}; }}
 
 /* ---------- 탭 = 알약 메뉴 ---------- */
 [role="tablist"] {{ gap: 8px; border: 0 !important; padding: 2px 0 10px; flex-wrap: wrap; }}
-[data-testid="stTab"] {{ border-radius: 999px !important; padding: 7px 16px !important; background: #fff; border: 1px solid {LINE} !important; cursor: pointer; height: auto !important; }}
+[data-testid="stTab"] {{ border-radius: {R} !important; padding: 7px 16px !important; background: #fff; border: 1px solid {LINE} !important; cursor: pointer; height: auto !important; }}
 [data-testid="stTab"] p {{ font-size: 14px; font-weight: 700; color: {INK}; }}
 [data-testid="stTab"]:hover {{ border-color: {BLUE} !important; }}
 [data-testid="stTab"][aria-selected="true"] {{ background: {BLUE}; border-color: {BLUE} !important; }}
@@ -128,17 +129,17 @@ header[data-testid="stHeader"] {{ background: transparent; height: 0; }}
 
 /* ---------- 버튼 ---------- */
 .stButton > button, .stDownloadButton > button, .stLinkButton > a, [data-testid="stFormSubmitButton"] > button {{
-  border-radius: 999px; border: 1px solid {LINE}; background: #fff; color: {INK}; font-weight: 700; box-shadow: none; }}
+  border-radius: {R}; border: 1px solid {LINE}; background: #fff; color: {INK}; font-weight: 700; box-shadow: none; }}
 .stButton > button:hover, .stDownloadButton > button:hover, .stLinkButton > a:hover, [data-testid="stFormSubmitButton"] > button:hover {{
-  border-color: {BLUE}; color: {BLUE}; background: #f3f8fe; }}
+  border-color: {BLUE}; color: {BLUE}; background: #eef3f8; }}
 button[kind="primary"], [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"] {{
   background: {BLUE} !important; border-color: {BLUE} !important; color: #fff !important; }}
 button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover, [data-testid="stBaseButton-primaryFormSubmit"]:hover {{
-  background: #084fa6 !important; border-color: #084fa6 !important; color: #fff !important; }}
+  background: #0c2a4f !important; border-color: #0c2a4f !important; color: #fff !important; }}
 
 /* ---------- 입력 ---------- */
-[data-baseweb="input"], [data-baseweb="textarea"], [data-baseweb="select"] > div {{ border-radius: 10px !important; border-color: {LINE} !important; background: #fff !important; }}
-[data-baseweb="input"]:focus-within, [data-baseweb="textarea"]:focus-within {{ border-color: {BLUE} !important; box-shadow: 0 0 0 3px rgba(11,99,206,.15); }}
+[data-baseweb="input"], [data-baseweb="textarea"], [data-baseweb="select"] > div {{ border-radius: {R} !important; border-color: {LINE} !important; background: #fff !important; }}
+[data-baseweb="input"]:focus-within, [data-baseweb="textarea"]:focus-within {{ border-color: {BLUE} !important; box-shadow: 0 0 0 3px rgba(18,58,107,.18); }}
 label p {{ font-size: 12px !important; font-weight: 500; color: {MUTED}; }}
 
 /* ---------- 사이드바 ---------- */
@@ -146,7 +147,7 @@ label p {{ font-size: 12px !important; font-weight: 500; color: {MUTED}; }}
 [data-testid="stSidebar"] h2 {{ font-size: 16px; font-weight: 900; color: {INK}; }}
 
 /* ---------- 대화: 코치는 밝은 말풍선, 사용자는 검은 말풍선(오른쪽) ---------- */
-[data-testid="stChatMessage"] {{ background: {SOFT}; border: 0; border-radius: 14px; padding: 10px 14px; gap: 0; max-width: 94%; font-size: 14px; }}
+[data-testid="stChatMessage"] {{ background: {SOFT}; border: 0; border-radius: {R}; padding: 10px 14px; gap: 0; max-width: 94%; font-size: 14px; }}
 [data-testid="stChatMessage"] [data-testid^="stChatMessageAvatar"], [data-testid="stChatMessage"] > img {{ display: none; }}
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {{ background: {INK}; margin-left: auto; width: fit-content; }}
 [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) p {{ color: #fff; }}
@@ -154,15 +155,66 @@ label p {{ font-size: 12px !important; font-weight: 500; color: {MUTED}; }}
 [data-testid="stChatMessage"] th, [data-testid="stChatMessage"] td {{ white-space: nowrap; font-size: 12px; padding: 6px 8px !important; }}
 [data-testid="stChatMessage"] {{ overflow-wrap: anywhere; }}
 [data-testid="stChatMessageContent"] {{ min-width: 0; }}
-[data-testid="stChatInput"] {{ border-radius: 14px; border: 1px solid {LINE}; background: #fff; }}
+[data-testid="stChatInput"] {{ border-radius: {R}; border: 1px solid {LINE}; background: #fff; }}
 
 /* 대화 패널은 대시보드를 내려도 따라온다 (넓은 화면에서만) */
 @media (min-width: 900px) {{ [data-testid="stColumn"]:has(> div .cc-coach):not(:has([data-testid="stColumn"] .cc-coach)) {{ position: sticky; top: 10px; align-self: flex-start; }} }}
 
 /* ---------- 알림 · 진행 막대 ---------- */
-[data-testid="stAlert"] {{ border-radius: 10px; border: 0; }}
+[data-testid="stAlert"] {{ border-radius: {R}; border: 0; }}
 [data-testid="stProgress"] > div > div > div > div {{ background: {BLUE}; }}
-div[role="dialog"] {{ border-radius: 16px; }}
+div[role="dialog"] {{ border-radius: {R}; }}
+
+/* ================= 각진 전문가형 마감 (shadcn/ui 구성요소 대응) ================= */
+/* Card */
+[class*="st-key-card"], .cc-tile, .cc-coach {{ box-shadow: 0 1px 0 rgba(18,58,107,.04); }}
+.cc-header {{ border-top: 3px solid {BLUE}; }}
+.cc-header > div:first-child {{ padding-left: 38px; }}
+.cc-logo {{ color: {BLUE}; }}
+.cc-sh {{ border-bottom: 1px solid {LINE}; padding-bottom: 10px; margin-bottom: 14px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }}
+.cc-sh h2 {{ color: {BLUE} !important; }}
+.cc-tile.main {{ border-left: 3px solid {BLUE}; }}
+.cc-tile .v {{ color: {INK}; }} .cc-tile.main .v {{ color: {BLUE}; }}
+.cc-rank .r {{ color: {SEA}; }} .cc-label {{ color: {SEA}; letter-spacing: .2px; }}
+.cc-box {{ border-left: 3px solid {LINE}; }}
+.cc-box.blue {{ border-left-color: {SEA}; }} .cc-box.green {{ border-left-color: #2b9466; background: #eef7f2; }}
+.cc-box.red {{ border-left-color: #c8473f; background: #fbeeed; }}
+.cc-box.blue .h {{ color: {SEA}; }}
+/* Badge */
+.cc-badge {{ border: 1px solid transparent; padding: 1px 8px; }}
+.cc-badge.best {{ background: {BLUE}; }} .cc-badge.sky {{ color: {SEA}; border-color: #c7dcf3; }}
+.cc-badge.good {{ background: #eef7f2; color: #2b9466; border-color: #bfe3d0; }}
+.cc-badge.warn {{ border-color: #f3d6a6; }} .cc-badge.mute {{ border-color: {LINE}; }}
+.cc-online {{ background: #eef7f2; color: #2b9466; border: 1px solid #bfe3d0; }}
+.cc-online.off {{ border: 1px solid {LINE}; }}
+/* Table */
+.cc-table th {{ background: #eef3f8; color: {BLUE}; font-size: 12px; }}
+[data-testid="stDataFrame"], [data-testid="stDataEditor"] {{ border: 1px solid {LINE}; border-radius: {R}; }}
+/* Tabs: 각진 메뉴 */
+[role="tablist"] {{ gap: 0 !important; border-bottom: 2px solid {BLUE} !important; padding: 0 !important; margin-bottom: 12px; }}
+[data-testid="stTab"] {{ border-radius: 0 !important; border: 1px solid {LINE} !important; border-bottom: 0 !important; margin-right: -1px; padding: 9px 18px !important; background: #fff; }}
+[data-testid="stTab"] p {{ color: {MUTED}; }}
+[data-testid="stTab"]:hover {{ background: #eef3f8; }} [data-testid="stTab"]:hover p {{ color: {BLUE}; }}
+[data-testid="stTab"][aria-selected="true"] {{ background: {BLUE}; border-color: {BLUE} !important; }}
+/* Button · Input · Select · Textarea: 포커스 링 */
+button:focus-visible, [data-testid="stTab"]:focus-visible {{ outline: 2px solid {SEA}; outline-offset: 2px; }}
+.stButton > button, .stDownloadButton > button, .stLinkButton > a, [data-testid="stFormSubmitButton"] > button {{ color: {BLUE}; min-height: 38px; }}
+/* Checkbox · Switch */
+[data-baseweb="checkbox"] > span:first-child {{ border-radius: {R} !important; }}
+/* Accordion(Expander) */
+[data-testid="stExpander"] summary {{ font-weight: 700; color: {BLUE}; }}
+/* Progress */
+.cc-prog {{ height: 6px; background: #e6ecf2; margin-top: 8px; }}
+.cc-prog > i {{ display: block; height: 100%; background: {BLUE}; }}
+/* Separator */
+[data-testid="stMarkdownContainer"] hr, hr {{ border-color: {LINE}; margin: 16px 0; }}
+/* Avatar · 말풍선 */
+.cc-avatar {{ background: {BLUE}; }}
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {{ background: {BLUE}; }}
+[data-testid="stChatMessage"] {{ border: 1px solid {LINE}; background: #fff; }}
+/* Dialog · Tooltip · Alert */
+div[role="dialog"] {{ border: 1px solid {LINE}; box-shadow: 0 12px 32px rgba(12,42,79,.18); }}
+[data-testid="stAlert"] {{ border: 1px solid {LINE}; }}
 </style>
 """
 
@@ -189,8 +241,12 @@ def coach_head(online: bool) -> None:
 
 def tiles(items: list[tuple[str, str, str]]) -> None:
     """요약 타일. items: (라벨, 값, 보조 설명) — 첫 칸이 넓다."""
+    def bar(value: str) -> str:
+        if not value.endswith("%") or not value[:-1].replace(".", "").isdigit():
+            return ""
+        return f'<div class="cc-prog"><i style="width:{min(100.0, float(value[:-1])):g}%"></i></div>'
     cells = "".join(f'<div class="cc-tile{" main" if i == 0 else ""}"><div class="k">{escape(k)}</div><div class="v">{escape(v)}</div>'
-                    f'<div class="n">{escape(n)}</div></div>' for i, (k, v, n) in enumerate(items))
+                    f'<div class="n">{escape(n)}</div>{bar(v)}</div>' for i, (k, v, n) in enumerate(items))
     st.markdown(f'<div class="cc-tiles">{cells}</div>', unsafe_allow_html=True)
 
 
