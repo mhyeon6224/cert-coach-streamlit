@@ -26,7 +26,7 @@ def new_state() -> dict:
                     "interest_posting": ""},
         "target": {}, "recommendations": None, "schedules": {}, "plan": None, "plan_preview": None,
         "boost_phase": None, "assets": [], "validity_opt_in": False, "pending": None,
-        "messages": [], "guideline": None, "study_path": None, "notion": None, "memo": "",
+        "messages": [], "guideline": None, "study_path": None, "notion": None, "memo": "", "notices": [],
     }
 
 
@@ -279,6 +279,8 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
     prefix = f"조건을 반영했어요: {', '.join(changed)}\n\n" if changed else ""
     if pending in ("recommend_missing", "plan_inputs") and changed and intent in ("general", "profile_update", "jobguide", "recommend", "plan"):
         intent = "recommend" if pending == "recommend_missing" else "plan"
+    if pending == "path_inputs" and intent in ("general", "profile_update", "prepare", "recommend", "plan"):
+        intent = "prepare"  # 학습 조건 질문에 대한 답(또는 "기본으로 추천해줘")이면 이어서 자료를 찾는다
     state["pending"] = None if pending != "plan_confirm" else state["pending"]
 
     # 3) 모드별 실행
@@ -294,6 +296,8 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
         return prefix + do_recommend(state, llm, search, today)
 
     target_cert = _resolve_cert(state, cert, text)
+    if pending == "path_inputs" and intent == "prepare" and not cert and state.get("pending_cert"):
+        target_cert = find_cert(state["pending_cert"]) or target_cert
     if intent in ("schedule", "prepare", "decide") and target_cert is None:
         return prefix + "어떤 자격증인지 알려 주세요. (예: \"SQLD 시험 일정 알려줘\") 아직 못 정했다면 \"자격증 추천해줘\"부터 시작해도 돼요."
 
@@ -305,7 +309,21 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
         return prefix + engine.schedule_markdown(result) + "\n\n일정만 확인했어요. 준비를 시작하려면 \"이 자격증으로 준비할래\"라고 말해 주세요."
 
     if intent == "prepare":
-        return prefix + engine.study_path(target_cert, state["profile"], llm, search, today)
+        profile = state["profile"]
+        questions = []
+        if not profile.get("cost_pref"):
+            questions.append("비용은 어떻게 하고 싶나요? (완전 무료 / 강의 무료·교재 구매 / 유료 강의 허용 / 시간 절약 우선)")
+        if not profile.get("learning_style"):
+            questions.append("어떤 방식이 잘 맞나요? (개념 강의형 / 문제풀이형 / 독학형 / 혼합형)")
+        if not profile.get("weekly_hours"):
+            questions.append("일주일에 몇 시간 정도 공부할 수 있나요?")
+        if questions and pending != "path_inputs":
+            state["pending"], state["pending_cert"] = "path_inputs", target_cert["name"]
+            return prefix + (f"**{target_cert['name']}** 강의·교재를 고르기 전에 학습 조건만 여쭤볼게요. 한 번에 답해 주셔도 돼요.\n\n"
+                             + "\n".join(f"{i}. {q}" for i, q in enumerate(questions, 1))
+                             + "\n\n잘 모르겠으면 \"기본으로 추천해줘\"라고 말해 주세요. 그러면 '강의 무료·교재 구매' 기준으로 찾아요.")
+        state.pop("pending_cert", None)
+        return prefix + engine.study_path(target_cert, profile, llm, search, today)
 
     if intent == "decide":
         set_target(state, target_cert)

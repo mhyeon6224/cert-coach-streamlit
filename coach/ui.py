@@ -284,6 +284,12 @@ img.cc-avatar {{ object-fit: cover; background: #fff; border: 1px solid {LINE}; 
 .cc-banner .f {{ position: relative; flex: none; line-height: 0; }}
 .cc-banner .moon {{ position: absolute; width: 38px; height: 38px; top: -16px; right: -20px; transform: rotate(-14deg); }}
 @media (max-width: 760px) {{ .cc-banner .moon {{ width: 24px; height: 24px; top: -14px; right: -6px; }} }}
+[class*="st-key-topbar"] .stButton > button {{ border-radius: 6px !important; background: #fff; border: 1px solid #d1d9e0; color: {INK}; font-weight: 700; min-height: 34px; white-space: nowrap; }}
+[class*="st-key-topbar"] .stButton > button[kind="primary"] {{ background: {BLUE} !important; color: #fff !important; }}
+/* Streamlit의 보이지 않는 상단 도구 모음이 상단바 버튼(알림·프로필)을 덮어 클릭을 가로채지 않게 한다 */
+header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stToolbar"] > div {{ pointer-events: none !important; }}
+[data-testid="stExpandSidebarButton"], [data-testid="stExpandSidebarButton"] *, [data-testid="stSidebarCollapsedControl"],
+[data-testid="stSidebarCollapsedControl"] * {{ pointer-events: auto !important; }}
 </style>
 """
 

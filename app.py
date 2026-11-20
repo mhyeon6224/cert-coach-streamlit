@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -393,13 +393,45 @@ with st.sidebar:
 target = S["target"]
 P = S["profile"]
 auth = st.session_state.get("auth")
-with st.container(key="topbar"):
-    bar_left, bar_right = st.columns([4.2, 1], vertical_alignment="center")
-    bar_left.markdown(ui.brand_html(), unsafe_allow_html=True)
-    with bar_right.popover(auth["nickname"] if auth else "로그인", icon=":material/account_circle:", use_container_width=True):
-        account_panel()
+# 화면에 띄우던 안내는 모두 알림함으로 모은다 (새 알림은 잠깐 뜨는 토스트로도 알려 준다)
 if st.session_state.get("flash"):
-    st.info(st.session_state.pop("flash"))
+    _message = st.session_state.pop("flash")
+    S.setdefault("notices", []).insert(0, {"at": datetime.now(timezone(timedelta(hours=9))).strftime("%m-%d %H:%M"), "text": _message})
+    del S["notices"][30:]
+    st.session_state["unread"] = st.session_state.get("unread", 0) + 1
+    st.toast("알림: " + _message.split("\n")[0][:80])
+
+
+@st.dialog("알림")
+def notice_dialog() -> None:
+    notices = S.get("notices") or []
+    if not notices:
+        st.caption("아직 알림이 없어요. 목표 저장, 재조정, Notion 동기화 같은 변경 사항이 여기에 쌓여요.")
+        return
+    for item in notices:
+        with st.container(border=True):
+            st.caption(item["at"])
+            st.markdown(item["text"])
+    if st.button("알림 모두 지우기", use_container_width=True):
+        S["notices"] = []
+        st.rerun()
+
+
+@st.dialog("내 프로필")
+def profile_dialog() -> None:
+    account_panel()
+
+
+with st.container(key="topbar"):
+    bar_left, bar_bell, bar_right = st.columns([3.4, 1, 1.2], vertical_alignment="center")
+    bar_left.markdown(ui.brand_html(), unsafe_allow_html=True)
+    _unread = st.session_state.get("unread", 0)
+    if bar_bell.button(f"알림 {_unread}" if _unread else "알림", icon=":material/notifications:", use_container_width=True,
+                       type="primary" if _unread else "secondary", key="bell"):
+        st.session_state["unread"] = 0
+        notice_dialog()
+    if bar_right.button(auth["nickname"] if auth else "로그인", icon=":material/account_circle:", use_container_width=True, key="profile_btn"):
+        profile_dialog()
 
 _plan = S.get("plan")
 _hours = float(P["weekly_hours"] or (_plan or {}).get("weekly_hours") or 0)
