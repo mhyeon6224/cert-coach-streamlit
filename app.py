@@ -538,7 +538,7 @@ with right:
         ("진행률", f"{_info['percent']}%" if _info else "—", f"현재 {_info['current_week']}주차" if _info and _info["current_week"] else "계획 저장 후 표시"),
         ("지연", f"{_info['delay_days']:g}일" if _info else "—", "3일 이상이면 재조정"),
     ])
-    tab_home, tab_rec, tab_sched, tab_space, tab_profile, tab_more = st.tabs(["대화", "추천", "일정", "계획", "프로필", "기능"])
+    tab_home, tab_rec, tab_sched, tab_space, tab_profile, tab_more, tab_guide = st.tabs(["대화", "추천", "일정", "계획", "프로필", "기능", "이용 안내"])
 
 with tab_home:
     with st.container(border=True, key="card1"):
@@ -1023,13 +1023,6 @@ with tab_profile:
                 st.rerun()
         else:
             st.caption("아직 기록이 없어요. 대화에서 \"SQLD 합격했어\" / \"불합격했어\"라고 말하거나 '기능' 탭의 버튼을 누르면 기록돼요.")
-    with st.container(border=True, key="card9"):
-        ui.section("저장 상태", "")
-        ui.table(["항목", "상태"], [
-            ["계정", (f"{auth['nickname']}님 로그인 중 · 자동 저장", "good") if auth else ("로그인 전 · 창을 닫으면 사라져요", "warn")],
-            ["저장 위치", store.label],
-            ["AI 추천", ("연결됨", "good") if llm else ("미설정 · 규칙 기반으로 동작", "mute")],
-            ["웹 검색", ("연결됨", "good") if search else ("미설정 · 직접 수집 가능한 사이트만", "mute")]])
 
 # ------------------------------------------------------------------ 기능
 with tab_more:
@@ -1064,6 +1057,17 @@ with tab_more:
                 st.caption("만료일은 입력하신 값 기준이에요. 기관별 유효기간 규정은 공식 사이트에서 확인해 주세요.")
         else:
             st.caption("꺼져 있으면 이름·등급만 확인하고 유효기간은 다루지 않아요.")
+
+# ------------------------------------------------------------------ 이용 안내 (앱이 동작하는 방식)
+with tab_guide:
+    st.caption("이 앱이 무엇을 저장하고, 어디와 연결되고, 어떤 원칙으로 답하는지 모아 둔 곳이에요.")
+    with st.container(border=True, key="card9"):
+        ui.section("저장 상태", "")
+        ui.table(["항목", "상태"], [
+            ["계정", (f"{auth['nickname']}님 로그인 중 · 자동 저장", "good") if auth else ("로그인 전 · 창을 닫으면 사라져요", "warn")],
+            ["저장 위치", store.label],
+            ["AI 추천", ("연결됨", "good") if llm else ("미설정 · 규칙 기반으로 동작", "mute")],
+            ["웹 검색", ("연결됨", "good") if search else ("미설정 · 직접 수집 가능한 사이트만", "mute")]])
     with st.container(border=True, key="card12"):
         ui.section("연동", "모두 본인 계정에만, 동의한 뒤에만")
         ui.table(["기능", "어디서", "설명"], [

@@ -211,11 +211,13 @@ def _resolve_cert(state: dict, cert: dict | None, message: str) -> dict | None:
     return cert_from_item(recs[0]) if recs else None
 
 
-def log_result(state: dict, result: str, today: date) -> tuple[str, int] | None:
+def log_result(state: dict, result: str, today: date, other: str = "") -> tuple[str, int] | None:
     """합격·불합격을 시험 이력에 남긴다(다음 추천·학습 경로에 반영). 불합격이면 가장 부족했던 단계도 함께 적는다."""
-    target = state["target"]
-    weak = planner.weakest_phase(state["plan"]) if result == "불합격" and state.get("plan") else None
-    report = planner.diagnose(state.get("plan"), target.get("exam_date"))  # 주차별 실행 기록 진단(합격도 완료율은 남긴다)
+    # other: 지금 준비 중인 목표가 아닌 다른 자격증의 결과(그 자격증의 계획 기록은 없으므로 현재 계획을 섞지 않는다)
+    target = {"name": other} if other else state["target"]
+    plan = None if other else state.get("plan")
+    weak = planner.weakest_phase(plan) if result == "불합격" and plan else None
+    report = planner.diagnose(plan, target.get("exam_date"))  # 주차별 실행 기록 진단(합격도 완료율은 남긴다)
     entry = {"cert": target.get("name") or "", "result": result, "date": today.isoformat(),
              "weak_phase": weak[0] if weak else "", "weak_percent": weak[1] if weak else None,
              "exam_date": target.get("exam_date") or "", "diagnosis": report}
@@ -291,7 +293,7 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
             return "알겠어요. 계획은 저장하지 않았어요. 조건(주당 시간·시험일)을 바꾼 뒤 다시 \"학습 계획 세워줘\"라고 말해 주세요."
     if pending == "owned_confirm":
         state["pending"] = None
-        name = state["target"].get("name", "")
+        name = state.pop("pending_owned", "") or state["target"].get("name", "")
         if YES.search(text):
             if name and name not in state["profile"]["owned"]:
                 state["profile"]["owned"].append(name)
@@ -381,6 +383,24 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
                      "- \"학습 계획 세워줘\" — 시험일까지 주차별 계획\n"
                      "- \"취업 가이드 알려줘\" — 목표 직무·관심 공고 기준 준비 방향")
         return prefix + "\n\n".join(lines)
+
+    current = state["target"]
+    if intent in ("registered", "exam_taken", "passed", "failed") and cert and current.get("code") and cert["code"] != current["code"]:
+        # 문장에 나온 자격증이 지금 목표와 다르면, 목표와 계획은 그대로 두고 그 자격증의 결과만 따로 남긴다
+        if intent == "passed":
+            log_result(state, "합격", today, other=cert["name"])
+            if cert["name"] in state["profile"]["owned"]:  # 같은 문장에서 이미 보유 자격증으로 반영된 경우 다시 묻지 않는다
+                return prefix + f"**{cert['name']}** 합격을 시험 이력에 남겼어요. 지금 준비 중인 {current['name']}의 목표와 계획은 그대로예요."
+            state["pending"], state["pending_owned"] = "owned_confirm", cert["name"]
+            return prefix + (f"**{cert['name']}** 합격을 시험 이력에 남겼어요. 지금 준비 중인 {current['name']}의 목표와 계획은 그대로예요.\n\n"
+                             f"보유 자격증 목록에 {cert['name']}을(를) 추가할까요? (응 / 아니)")
+        if intent == "failed":
+            log_result(state, "불합격", today, other=cert["name"])
+            return prefix + (f"**{cert['name']}** 불합격을 시험 이력에 남겼어요. 지금 준비 중인 {current['name']}의 목표와 계획은 그대로예요.\n\n"
+                             f"{cert['name']}은(는) 이 앱에 주차별 계획 기록이 없어 실행 진단은 만들지 못했어요. "
+                             f"다시 준비하려면 \"{cert['name']}로 준비할래\"라고 말해 주세요.")
+        return prefix + (f"지금 목표는 {current['name']}예요. {cert['name']}의 접수·응시 상태를 기록하려면 먼저 "
+                         f"\"{cert['name']}로 준비할래\"로 목표를 바꿔 주세요. (목표를 바꾸면 {current['name']}의 저장된 계획은 지워져요.)")
 
     if intent in ("registered", "exam_taken", "passed", "failed") and not state["target"].get("code"):
         if target_cert:
