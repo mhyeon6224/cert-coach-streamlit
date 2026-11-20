@@ -13,7 +13,7 @@ from datetime import date
 
 from .catalog import (BY_CODE, CATALOG, external_cert, find_cert, is_owned, job_tags, private_accreditation,
                       private_guide, reference_info)
-from .crawl import crawl_official
+from .crawl import book_price, book_search_url, crawl_official
 from .services import LLM, LLMError, Search, SearchError, host_matches
 
 COST_OPTIONS = ["완전 무료", "강의 무료·교재 구매", "유료 강의 허용", "시간 절약 우선"]
@@ -218,7 +218,7 @@ def recommend_markdown(result: dict) -> str:
     if result["summary"]:
         out.append(result["summary"])
     for item in result["candidates"]:
-        label = "🥇 1순위" if item["rank"] == 1 else f"🥈 대안 {item['rank'] - 1}"
+        label = "1순위" if item["rank"] == 1 else f"대안 {item['rank'] - 1}"
         out.append(
             f"**{label} — {item['name']}** ({item['issuer']})\n"
             f"- 진로 연결 근거: {item['reason']}\n"
@@ -228,7 +228,7 @@ def recommend_markdown(result: dict) -> str:
                if item.get("outside") else "")
             + f"- 공식 사이트: {item['official_url']}")
     if result["practice_first"]:
-        out.append(f"💡 솔직히 말하면: {result['practice_first']}")
+        out.append(f"솔직히 말하면: {result['practice_first']}")
     out += [f"_{n}_" for n in result["notices"]]
     out.append("다음에 할 수 있는 것 (원하는 것부터 골라 주세요)\n"
                "- \"1순위로 준비할래\" — 목표 자격증으로 저장\n"
@@ -399,7 +399,7 @@ def schedule_markdown(result: dict) -> str:
         out.append("지난 회차: " + ", ".join(f"{r['round']}({r['exam_date']})" for r in past))
     out.append(f"응시료: {result['fee']['text'] if result['fee'] else '미확인'}"
                + (f" · 응시자격: {result['eligibility']['text']}" if result["eligibility"] else ""))
-    blocks = [("✅ 확정됨", result["confirmed"]), ("🔎 확인 필요", result["need_check"]), ("⛔ 못 함", result["failed"])]
+    blocks = [("확정됨", result["confirmed"]), ("확인 필요", result["need_check"]), ("못 함", result["failed"])]
     status = "\n".join(f"- {label}: {' / '.join(items)}" for label, items in blocks if items)
     if status:
         out.append(status)
@@ -460,8 +460,8 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
         head.append("비용 선호가 아직 없어 '강의 무료·교재 구매' 기준으로 찾았어요. '프로필' 탭에서 바꾸면 다시 계산해요.")
     if search is None:
         return "\n\n".join(head + [
-            "⛔ 못 함: 검색 키가 없어 강의·교재 후보를 확인하지 못했어요. 확인하지 않은 자료 이름은 지어내지 않아요.",
-            f"🔎 확인 필요: 기출문제 공개 여부와 시험 범위는 공식 사이트에서 확인해 주세요 → {cert['official_url']}",
+            "못 함: 검색 키가 없어 강의·교재 후보를 확인하지 못했어요. 확인하지 않은 자료 이름은 지어내지 않아요.",
+            f"확인 필요: 기출문제 공개 여부와 시험 범위는 공식 사이트에서 확인해 주세요 → {cert['official_url']}",
             "일반 순서: 개념(40%) → 단원별 문제풀이(25%) → 기출(25%) → 모의고사·복습(10%). \"학습 계획 세워줘\"로 주차 계획을 만들 수 있어요."])
     free = "무료 " if cost in ("", "완전 무료", "강의 무료·교재 구매") else ""
     queries = [(f"{cert['name']} {free}강의 독학 후기", None), (f"{cert['name']} 교재 추천 후기 {today.year}", None)]
@@ -483,9 +483,9 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
     hits = hits[:14]
     links = "\n".join(f"{i + 1}. [{h['title']}]({h['url']})" for i, h in enumerate(hits))
     if not hits:
-        return "\n\n".join(head + ["⛔ 못 함: 검색 결과를 가져오지 못했어요. 잠시 뒤 다시 시도해 주세요.", f"공식 사이트: {cert['official_url']}"])
+        return "\n\n".join(head + ["못 함: 검색 결과를 가져오지 못했어요. 잠시 뒤 다시 시도해 주세요.", f"공식 사이트: {cert['official_url']}"])
     if llm is None:
-        return "\n\n".join(head + ["🔎 후기 미확인 — AI 키가 없어 원문을 요약하지 못했어요. 아래 검색 결과를 직접 확인해 주세요.", links])
+        return "\n\n".join(head + ["후기 미확인 — AI 키가 없어 원문을 요약하지 못했어요. 아래 검색 결과를 직접 확인해 주세요.", links])
     payload = [{"source_id": i, "title": h["title"], "url": h["url"], "text": h["content"][:1500]} for i, h in enumerate(hits)]
     try:
         raw = llm.json([
@@ -493,7 +493,7 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
             {"role": "user", "content": json.dumps({"user_profile": profile_text(profile), "search_results": payload}, ensure_ascii=False)}],
             temperature=0.1, max_tokens=3200)
     except LLMError:
-        return "\n\n".join(head + ["⛔ 못 함: 자료 요약에 실패했어요. 아래 검색 결과를 직접 확인해 주세요.", links])
+        return "\n\n".join(head + ["못 함: 자료 요약에 실패했어요. 아래 검색 결과를 직접 확인해 주세요.", links])
 
     if cost == "완전 무료" and _paid_mentions(raw):  # 유료 자료가 섞였으면 한 번만 다시 요청한다
         try:
@@ -561,15 +561,35 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
         value = max(counts, key=lambda v: (len(counts[v]), v))
         return f"{value:,}원", counts[value][0]
 
+    VENDORS = {"에듀윌": "https://www.eduwill.net/", "인프런": "https://www.inflearn.com/", "패스트캠퍼스": "https://fastcampus.co.kr/",
+               "유데미": "https://www.udemy.com/", "클래스101": "https://class101.net/", "시대에듀": "https://www.sdedu.co.kr/",
+               "해커스": "https://www.hackers.com/"}
+
+    def check_link(title: str, kind: str) -> str:
+        """가격을 확인하지 못했을 때, 사용자가 직접 확인할 수 있는 곳을 붙인다."""
+        if kind == "book":
+            return f"가격 확인 필요 — [알라딘에서 이 책 검색]({book_search_url(title)})"
+        vendor = next((url for name, url in VENDORS.items() if name in title), None)
+        if vendor:
+            return f"가격 확인 필요 — [제공처 사이트에서 수강료 확인]({vendor})"
+        from urllib.parse import quote
+        clean = re.sub(r"\s+", " ", re.sub(r"[\(\[].*?[\)\]]", " ", title)).strip()
+        return f"가격 확인 필요 — [검색해서 수강료 확인](https://search.naver.com/search.naver?query={quote(clean + ' 수강료')})"
+
     def priced(item, ids: list[int], title: str, low: int, high: int) -> str:
+        kind = "book" if high <= 60000 else "lecture"
+        if kind == "book":  # 교재는 서점(알라딘)에서 같은 이름의 책 정가를 먼저 읽는다
+            found = book_price(title)
+            if found:
+                return f"정가 {found['price']} (알라딘 기준 · [상품 페이지]({found['url']}))"
         text = price_of(item, ids)
         first = re.search(r"\d[\d,]*", text)
         if first and not low <= int(first[0].replace(",", "") or 0) <= high:
             text = "가격 확인 필요"  # 교재값·수강료로 보기 어려운 숫자(다른 상품 가격일 수 있음)는 쓰지 않는다
         if text != "가격 확인 필요":
             return text
-        found = lookup_price(title, low, high)
-        return f"{found[0]} (검색 기준 · [출처]({found[1]}) · 판매처에서 다시 확인)" if found else text
+        found = lookup_price(title, low, high) if kind == "lecture" else None
+        return f"{found[0]} (검색 기준 · [출처]({found[1]}) · 판매처에서 다시 확인)" if found else check_link(title, kind)
 
     costs = []
     if lecture:
@@ -585,7 +605,7 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
     if paid:
         paid_price = priced(basic["paid_lecture"], paid[1], paid[0], 10000, 1500000)
         why_pay = known(basic["paid_lecture"].get("why_pay"))
-        costs.append(f"유료 강의를 고르면 {paid_price.split(' (')[0]}")
+        costs.append(f"유료 강의를 고르면 {paid_price.split(' (')[0].split(' — ')[0]}")
         lines.append(f"- 유료 강의 후보: {paid[0]} {refs(paid[1])}\n  - 수강료: {paid_price}"
                      + (f"\n  - 돈을 낼 만한 이유: {why_pay}" if why_pay != "미확인" else "")
                      + "\n  - 위 무료 강의로 시작해 보고, 부족하면 이 강의를 고려하는 순서를 권해요.")
@@ -605,19 +625,19 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
             if not item:
                 lines.append(f"- {label}: 미확인 — 근거가 확인된 교재를 찾지 못했어요.")
                 continue
-            book_price = priced(source, item[1], item[0], 8000, 60000)
+            book_cost = priced(source, item[1], item[0], 8000, 60000)
             if key == "book":
-                costs.append(f"교재 {book_price.split(' (')[0]}")
+                costs.append(f"교재 {book_cost.split(' (')[0].split(' — ')[0]}")
             pros, cons = facts(source.get("pros")), facts(source.get("cons"))
             lines.append(
-                f"- {label}: {item[0]} {refs(item[1])}\n  - 가격: {book_price}"
+                f"- {label}: {item[0]} {refs(item[1])}\n  - 가격: {book_cost}"
                 + (f" / 맞는 경우: {known(source.get('fit'))}" if known(source.get("fit")) != "미확인" else "")
                 + f"\n  - 장점: {'; '.join(pros) if pros else '확인된 내용 없음'}"
                 + f"\n  - 단점·주의점: {'; '.join(cons) if cons else '검색한 글에서는 확인하지 못했어요(없다는 뜻은 아니에요)'}")
     budget = (profile.get("budget") or "").strip()
     lines.append("- 예상 비용(확인된 가격만): " + " · ".join(costs)
                  + (f" / 입력한 예산: {budget}" if budget else "")
-                 + " — '가격 확인 필요' 항목은 구매 전에 판매처에서 확인해 주세요.")
+                 + " — '가격 확인 필요' 항목은 옆의 링크에서 직접 확인해 주세요.")
     out = head + ["**기본 경로**\n" + "\n".join(lines)]
     strict = cost == "완전 무료"
     why = str(basic.get("why") or "")
@@ -670,7 +690,7 @@ def job_guideline(profile: dict, cert_names: list[str], llm: LLM | None, search:
     if not job and not posting:
         return None
     if llm is None:
-        return "**취업 가이드라인**\n\n⛔ 못 함: AI 키가 없어 공고 요건을 분석하지 못했어요."
+        return "**취업 가이드라인**\n\n못 함: AI 키가 없어 공고 요건을 분석하지 못했어요."
     sources, origin = [], ""
     if posting:
         sources.append({"title": "사용자 제공 공고", "url": "", "content": posting[:4000]})
@@ -682,7 +702,7 @@ def job_guideline(profile: dict, cert_names: list[str], llm: LLM | None, search:
         except SearchError:
             sources = []
     if not sources:
-        return ("**취업 가이드라인**\n\n⛔ 못 함: 공고를 읽지 못해 반복 요건을 추출하지 못했어요. "
+        return ("**취업 가이드라인**\n\n못 함: 공고를 읽지 못해 반복 요건을 추출하지 못했어요. "
                 "'프로필' 탭의 '관심 공고'에 공고 본문을 붙여 넣으면 그 원문으로 분석해요.")
     payload = [{"source_id": i, "title": s["title"], "text": s["content"][:2000]} for i, s in enumerate(sources)]
     try:
@@ -692,7 +712,7 @@ def job_guideline(profile: dict, cert_names: list[str], llm: LLM | None, search:
                                                     "postings": payload}, ensure_ascii=False)}],
             temperature=0.1, max_tokens=1600)
     except LLMError:
-        return "**취업 가이드라인**\n\n⛔ 못 함: 공고 분석에 실패했어요. 잠시 뒤 다시 시도해 주세요."
+        return "**취업 가이드라인**\n\n못 함: 공고 분석에 실패했어요. 잠시 뒤 다시 시도해 주세요."
     out = ["**취업 가이드라인** (관심 공고·목표 직무가 있을 때만 표시)", f"- 직무 요약: {raw.get('job_summary') or '미확인'}"]
     repeated, single, evidence = [], [], []
     for item in raw.get("competencies") or []:

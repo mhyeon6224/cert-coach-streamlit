@@ -387,7 +387,7 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
         log_result(state, "합격", today)
         nxt = do_recommend(state, llm, search, today, after_pass=passed_name, exclude={target.get("code", "")})
         state["pending"] = "owned_confirm"
-        return prefix + (f"🎉 {passed_name} 합격을 반영했어요. (상태: 합격)\n\n**다음 단계 제안**\n\n{nxt}\n\n---\n\n"
+        return prefix + (f"{passed_name} 합격을 반영했어요. (상태: 합격)\n\n**다음 단계 제안**\n\n{nxt}\n\n---\n\n"
                          f"보유 자격증 목록에 {passed_name}을(를) 추가할까요? (응 / 아니)")
     if intent == "failed":
         target["state"] = "불합격"

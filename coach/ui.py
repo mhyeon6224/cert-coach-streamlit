@@ -311,6 +311,22 @@ header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stToolb
 .cc-out li {{ counter-increment: out; position: relative; padding: 5px 0 5px 26px; font-size: 13.5px; line-height: 1.55; color: {MUTED}; border-top: 1px dashed {LINE}; }}
 .cc-out li:first-child {{ border-top: 0; }}
 .cc-out li::before {{ content: counter(out); position: absolute; left: 0; top: 6px; width: 17px; height: 17px; border: 1px solid {LINE}; border-radius: {R}; font-size: 11px; font-weight: 700; color: {INK}; display: flex; align-items: center; justify-content: center; }}
+/* ---------- 차분한 마감: 색 면 대신 선과 글자 굵기로 구분한다 ---------- */
+.cc-outs {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: .75rem; }}
+.cc-outs .cc-out {{ min-height: 0; border-top: 1px solid {LINE}; }}
+@media (max-width: 760px) {{ .cc-outs {{ grid-template-columns: 1fr; }} }}
+.cc-box, .cc-box.blue, .cc-box.green, .cc-box.red {{ background: #fff; border: 1px solid {LINE}; border-left: 1px solid {LINE}; color: {INK}; padding: 12px 14px; }}
+.cc-box .h, .cc-box.blue .h, .cc-box.green .h, .cc-box.red .h {{ color: {MUTED}; font-size: 11.5px; font-weight: 700; letter-spacing: .3px; margin-bottom: 4px; }}
+.cc-box.green .h::before, .cc-box.red .h::before, .cc-box.blue .h::before {{ content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; vertical-align: 1px; background: {SEA}; }}
+.cc-box.green .h::before {{ background: #2b9466; }} .cc-box.red .h::before {{ background: #c8473f; }}
+.cc-badge, .cc-badge.sky, .cc-badge.good, .cc-badge.warn, .cc-badge.mute {{ background: #fff; border: 1px solid {LINE}; color: {INK}; font-weight: 600; }}
+.cc-badge.good {{ border-color: #9fcdb5; color: #23744f; }} .cc-badge.warn {{ border-color: #e3c690; color: #8a5a0c; }}
+.cc-badge.mute {{ color: {MUTED}; }} .cc-badge.best, .cc-badge.navy {{ background: {BLUE}; border-color: {BLUE}; color: #fff; }}
+.cc-online {{ background: #fff; }}
+.cc-pair .c.good .h {{ color: {MUTED}; }} .cc-pair .c.limit .h {{ color: {MUTED}; }}
+.cc-step .n {{ background: #fff; color: {INK}; border: 1px solid {LINE}; }}
+.cc-tile.main {{ border-left: 1px solid {LINE}; border-top: 2px solid {BLUE}; }}
+.cc-label {{ color: {MUTED}; letter-spacing: .3px; }}
 </style>
 """
 
@@ -425,6 +441,13 @@ def pair_card(title: str, good: str, limit: str, good_head: str = "닿는 지점
         f'<div class="c good"><div class="h">{escape(good_head)}</div>{escape(good)}</div>'
         f'<div class="c limit"><div class="h">{escape(limit_head)}</div>{escape(limit)}</div></div></div>',
         unsafe_allow_html=True)
+
+
+def outcomes(panels: list[tuple[str, list[str]]]) -> None:
+    """여러 결과 패널을 같은 높이로 나란히 그린다."""
+    cells = "".join(f'<div class="cc-out"><div class="t">{escape(title)}</div><ol>'
+                    + "".join(f"<li>{escape(step)}</li>" for step in steps_) + "</ol></div>" for title, steps_ in panels)
+    st.markdown(f'<div class="cc-outs">{cells}</div>', unsafe_allow_html=True)
 
 
 def outcome(title: str, steps_: list[str], tone: str = "") -> None:

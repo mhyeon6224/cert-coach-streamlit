@@ -130,7 +130,7 @@ def send(message: str) -> str:
     try:
         reply = handle(message, S, llm, search, today)
     except Exception as error:  # 한 단계가 실패해도 대화 전체를 멈추지 않는다
-        reply = f"⛔ 이 요청을 처리하다 문제가 생겼어요({type(error).__name__}). 조건을 바꿔 다시 시도해 주세요."
+        reply = f"이 요청을 처리하다 문제가 생겼어요({type(error).__name__}). 조건을 바꿔 다시 시도해 주세요."
     S["messages"].append({"role": "assistant", "content": reply})
     return reply
 
@@ -385,9 +385,9 @@ with st.sidebar:
             st.rerun()
 
     with st.expander("연결 상태·데모 설정"):
-        st.write(("✅" if llm else "⚪") + " AI 모델 " + ("연결됨" if llm else "미설정 — 규칙 기반으로 동작"))
-        st.write(("✅" if search else "⚪") + " 웹 검색 " + ("연결됨" if search else "미설정 — 직접 수집 가능한 사이트만 일정 확인"))
-        st.write(("✅" if store.durable else "🟡") + " 저장소: " + store.label)
+        st.caption("AI 모델 · " + ("연결됨" if llm else "미설정 — 규칙 기반으로 동작"))
+        st.caption("웹 검색 · " + ("연결됨" if search else "미설정 — 직접 수집 가능한 사이트만 일정 확인"))
+        st.caption("저장소 · " + store.label)
         demo = st.checkbox("오늘 날짜 바꾸기 (지연·재조정 시연용)")
         demo_day = st.date_input("가상의 오늘", date.today(), disabled=not demo)
     today = demo_day if demo else date.today()
@@ -726,7 +726,7 @@ with tab_sched, st.container(border=True, key="card5"):
                             st.session_state.pop("gcal_result", None)
                             st.rerun()
                         for row in st.session_state.get("gcal_result", []):
-                            mark = "✅" if row["status"] in ("등록 완료", "이미 등록됨") else "⛔"
+                            mark = "완료 ·" if row["status"] in ("등록 완료", "이미 등록됨") else "실패 ·"
                             st.markdown(f"{mark} {row['title']} ({row['date']}) — {row['status']}"
                                         + (f" · [캘린더에서 보기]({row['link']})" if row["link"] else ""))
                     else:
@@ -928,17 +928,13 @@ with tab_more:
     with st.container(border=True, key="card10"):
         ui.section("시험 결과 반영", (f"현재 목표: {target['name']} · {target.get('state', '준비중')}" if target.get("code")
                                        else "목표 자격증을 정하면 결과를 알릴 수 있어요"))
+        ui.outcomes([
+            ("합격했다면", ["보유 자격증에 추가할지 물어봐요", "상태를 '합격'으로 바꾸고 시험 이력에 남겨요", "이어서 준비할 다음 자격증을 제안해요"]),
+            ("불합격했다면", ["완료율이 가장 낮았던 단계를 사실대로 알려 줘요", "시험 이력에 남겨 다음 추천에 반영해요",
+                          "다음 회차 일정을 확인한 뒤 그 단계 비중을 올린 계획을 제안해요"])])
         r1, r2 = st.columns(2)
-        with r1:
-            ui.outcome("합격했다면", ["보유 자격증에 추가할지 물어봐요", "상태를 '합격'으로 바꾸고 시험 이력에 남겨요",
-                                   "이어서 준비할 다음 자격증을 제안해요"], "pass")
-            st.button("합격했어요", use_container_width=True, key="more_pass", on_click=queue, args=("합격했어",),
-                      disabled=not target.get("code"))
-        with r2:
-            ui.outcome("불합격했다면", ["완료율이 가장 낮았던 단계를 사실대로 알려 줘요", "시험 이력에 남겨 다음 추천에 반영해요",
-                                    "다음 회차 일정 확인 뒤 그 단계 비중을 올린 계획을 제안해요"])
-            st.button("불합격했어요", use_container_width=True, key="more_fail", on_click=queue, args=("불합격했어",),
-                      disabled=not target.get("code"))
+        r1.button("합격했어요", use_container_width=True, key="more_pass", on_click=queue, args=("합격했어",), disabled=not target.get("code"))
+        r2.button("불합격했어요", use_container_width=True, key="more_fail", on_click=queue, args=("불합격했어",), disabled=not target.get("code"))
     with st.container(border=True, key="card11"):
         ui.section("보유 자격증·유효기간 관리", "이미 보유한 자격증은 다시 추천하지 않아요")
         if P["owned"]:
@@ -987,4 +983,4 @@ if st.session_state.get("auth"):
             storage.save(store, st.session_state["auth"], current)
             st.session_state["saved_digest"] = digest
         except storage.StoreError:
-            st.toast("자동 저장에 실패했어요. 잠시 뒤 다시 시도할게요.", icon="⚠️")
+            st.toast("자동 저장에 실패했어요. 잠시 뒤 다시 시도할게요.")

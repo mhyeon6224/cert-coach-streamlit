@@ -18,6 +18,14 @@ HEADERS = {
 DATAQ_URL = "https://www.dataq.or.kr/www/accept/schedule.do"
 TOEIC_URL = "https://exam.toeic.co.kr/receipt/examSchList.php"
 KACPTA_URL = "https://license.kacpta.or.kr/web/info/info_diary.aspx"
+KACPTA_FEE_URL = "https://license.kacpta.or.kr/web/info/info_outline.aspx"
+DATAQ_FEE_URL = "https://www.dataq.or.kr/www/accept/guide.do"
+DATAQ_FEES = {"SQLD": r"SQL 개발자\(SQLD\)", "SQLP": r"SQL 전문가\(SQLP\)", "ADSP": r"데이터 분석 준전문가\(ADsP\)"}
+SPEAKING_URL = "https://www.toeicswt.co.kr/receipt/examSchList.php"
+OPIC_URL = "https://www.opic.or.kr/opics/servlet/controller.opic.site.receipt.AnnualScheduleServlet?p_process=select-list&p_tab=0"
+TEPS_PAGE = "https://www.teps.or.kr/receiption/examschedule"
+TEPS_LIST = "https://www.teps.or.kr/receiption/scheduleList1"
+ALADIN_SEARCH = "https://www.aladin.co.kr/search/wsearchresult.aspx"
 KACPTA_CODES = {"ACCOUNT_1", "TAX_2", "ADHOC_전산세무회계"}
 KOFIA_PAGE = "https://license.kofia.or.kr/examInfo/examYearly.do"
 KOFIA_API = "https://license.kofia.or.kr/examInfo/ajax/examYearlyMstInfo.do"
@@ -85,6 +93,104 @@ def parse_toeic(text: str) -> list[dict]:
         rows.append({"round": f"제{m[1]}회", "exam_date": f"{m[2]}-{m[3]}-{m[4]}", "result_date": f"{m[5]}-{m[6]}-{m[7]}",
                      "reg_start": f"{m[8]}-{m[9]}-{m[10]}", "reg_end": f"{m[11]}-{m[12]}-{m[13]}", "source_url": TOEIC_URL})
     return rows
+
+
+def parse_speaking(text: str) -> list[dict]:
+    """TOEIC Speaking 시험일정: 시험일 · 성적발표일 · 접수기간."""
+    start = text.find("시험일정 리스트 테이블")
+    day = r"(\d{4})\.(\d{2})\.(\d{2})"
+    pattern = re.compile(rf"{day} \(.\)\s+{day} \(.\) [\d:]+\s+{day} \(.\) [\d:]+~{day}")
+    rows = []
+    for m in pattern.finditer(text[max(start, 0):]):
+        rows.append({"round": f"{m[1]}-{m[2]}-{m[3]} 시험", "exam_date": f"{m[1]}-{m[2]}-{m[3]}", "result_date": f"{m[4]}-{m[5]}-{m[6]}",
+                     "reg_start": f"{m[7]}-{m[8]}-{m[9]}", "reg_end": f"{m[10]}-{m[11]}-{m[12]}", "source_url": SPEAKING_URL})
+    return rows
+
+
+def parse_opic(text: str) -> list[dict]:
+    """OPIc 연간 정기시험 일정: 시험일 · 접수기간 · 성적발표일."""
+    day = r"(\d{4})\.(\d{2})\.(\d{2})\(.\)"
+    pattern = re.compile(rf"정기\s+OPIc\s+{day}\s+{day}\s*~\s*{day}\s+{day}")
+    rows, seen = [], set()
+    for m in pattern.finditer(text):
+        exam = f"{m[1]}-{m[2]}-{m[3]}"
+        if exam in seen:
+            continue
+        seen.add(exam)
+        rows.append({"round": f"{exam} 정기시험", "exam_date": exam, "reg_start": f"{m[4]}-{m[5]}-{m[6]}",
+                     "reg_end": f"{m[7]}-{m[8]}-{m[9]}", "result_date": f"{m[10]}-{m[11]}-{m[12]}", "source_url": OPIC_URL})
+    return rows
+
+
+def fetch_teps(years: list[int]) -> dict:
+    """TEPS 연간 일정. 일정 페이지에서 연도별 회차 범위를 읽고, 그 범위의 일정표를 받는다."""
+    page = requests.get(TEPS_PAGE, headers=HEADERS, timeout=15)
+    page.raise_for_status()
+    rows = []
+    for year, first, last in re.findall(r'<option value="(\d{4})" data-from="(\d+)" data-to="(\d+)"', page.text):
+        if int(year) not in years:
+            continue
+        response = requests.get(TEPS_LIST, params={"seqfrom": first, "seqto": last}, headers=HEADERS, timeout=15)
+        response.raise_for_status()
+        response.encoding = response.apparent_encoding
+        text = re.sub(r"\s+", " ", re.sub(r"<style.*?</style>|<[^>]+>", " ", response.text, flags=re.S))
+        for chunk in re.split(r"\s(?=\d{3}\s+\d{2}\.\d{2}\.\d{2}\()", text)[1:]:
+            number = chunk.split()[0]
+            days = [f"20{y}-{m}-{dd}" for y, m, dd in re.findall(r"(\d{2})\.(\d{2})\.(\d{2})\(", chunk)]
+            if len(days) >= 4:
+                rows.append({"round": f"제{number}회", "exam_date": days[0], "reg_start": days[1], "reg_end": days[2],
+                             "result_date": days[-1], "source_url": TEPS_PAGE})
+    return {"rounds": rows}
+
+
+def official_fee(cert: dict) -> str | None:
+    """공식 안내 페이지에 적힌 응시료. 읽지 못하면 None(지어내지 않는다)."""
+    code = cert.get("code")
+    try:
+        if code in DATAQ_FEES:
+            m = re.search(DATAQ_FEES[code] + r"\s*([\d,]+원)", page_text(DATAQ_FEE_URL))
+            return m[1] if m else None
+        if code == "BIGDATA":
+            text = page_text(DATAQ_FEE_URL)
+            a = re.search(r"빅데이터분석기사 - 필기\s*([\d,]+원)", text)
+            b = re.search(r"빅데이터분석기사 - 실기\s*([\d,]+원)", text)
+            return f"필기 {a[1]} / 실기 {b[1]}" if a and b else None
+        if code in KACPTA_CODES:
+            m = re.search(r"접수수수료\s*([\d,]+원)", page_text(KACPTA_FEE_URL))
+            return m[1] if m else None
+    except Exception:
+        return None
+    return None
+
+
+def book_price(title: str) -> dict | None:
+    """알라딘 검색 결과에서 같은 이름의 책 정가를 읽는다. 책 이름이 맞지 않으면 None."""
+    clean = re.sub(r"[\(\[].*?[\)\]]", " ", title or "")
+    words = [w for w in re.split(r"[\s/·,]+", clean) if len(w) >= 2][:5]
+    if len(words) < 2:
+        return None
+    try:
+        response = requests.get(ALADIN_SEARCH, params={"SearchTarget": "Book", "SearchWord": " ".join(words)}, headers=HEADERS, timeout=15)
+        response.raise_for_status()
+        raw = response.text
+    except Exception:
+        return None
+    for m in re.finditer(r'<a href="(https://www\.aladin\.co\.kr/shop/wproduct\.aspx\?ItemId=\d+)" class="bo3"[^>]*>(.*?)</a>', raw, flags=re.S):
+        name = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", m[2])).strip()
+        tail = raw[m.end():m.end() + 3000]
+        price = re.search(r'<span class="">([\d,]+)</span>원', tail)
+        flat = re.sub(r"\s", "", name)
+        if not price or "세트" in name or "절판" in re.sub(r"<[^>]+>", "", tail[:2500]):
+            continue
+        if sum(1 for w in words if re.sub(r"\s", "", w) in flat) >= max(2, len(words) - 1):
+            return {"title": name[:80], "price": f"{price[1]}원", "url": m[1]}
+    return None
+
+
+def book_search_url(title: str) -> str:
+    from urllib.parse import urlencode
+    clean = re.sub(r"\s+", " ", re.sub(r"[\(\[].*?[\)\]]", " ", title or "")).strip()
+    return ALADIN_SEARCH + "?" + urlencode({"SearchTarget": "Book", "SearchWord": clean})
 
 
 def parse_kacpta(text: str) -> list[dict]:
@@ -167,7 +273,10 @@ def crawl_official(cert: dict) -> dict | None:
     code, name = cert.get("code"), re.sub(r"\s", "", cert.get("name") or "")
     fetcher = None
     kbi_name = next((n for n in KBI_NAMES if n in name), None)
-    if name in KOFIA_LICENSES:
+    if code == "TEPS":
+        year = date.today().year
+        url, title, fetcher = TEPS_PAGE, "TEPS 연간 시험일정", lambda: fetch_teps([year, year + 1])
+    elif name in KOFIA_LICENSES:
         url, title, fetcher = KOFIA_PAGE, "금융투자협회 자격시험 연간 일정", lambda: fetch_kofia(KOFIA_LICENSES[name])
     elif kbi_name:
         year = date.today().year
@@ -183,6 +292,10 @@ def crawl_official(cert: dict) -> dict | None:
         url, title, parser = DATAQ_URL, "데이터자격시험 연간 일정표", lambda t: parse_dataq(t, DATAQ_NAMES[code])
     elif code in KACPTA_CODES:
         url, title, parser = KACPTA_URL, "한국세무사회 자격시험 연간 일정", parse_kacpta
+    elif code == "TOEIC_SPEAKING":
+        url, title, parser = SPEAKING_URL, "TOEIC Speaking 시험일정", parse_speaking
+    elif code == "OPIC":
+        url, title, parser = OPIC_URL, "OPIc 연간 시험일정", parse_opic
     elif code == "TOEIC":
         url, title, parser = TOEIC_URL, "TOEIC 시험일정", parse_toeic
     else:
@@ -191,4 +304,5 @@ def crawl_official(cert: dict) -> dict | None:
         rounds = parser(page_text(url))
     except Exception as error:
         return {"rounds": [], "url": url, "title": title, "error": type(error).__name__}
-    return {"rounds": rounds, "url": url, "title": title, "error": None if rounds else "일정표 구조를 읽지 못함"}
+    return {"rounds": rounds, "url": url, "title": title, "fee": official_fee(cert) if rounds else None,
+            "error": None if rounds else "일정표 구조를 읽지 못함"}

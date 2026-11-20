@@ -224,10 +224,10 @@ def weakest_phase(plan: dict) -> tuple[str, int] | None:
 
 
 def briefing_text(info: dict, cert_name: str) -> str:
-    lines = [f"**📌 오늘 브리핑 — {cert_name} ({info['today']})**"]
+    lines = [f"**오늘 브리핑 — {cert_name} ({info['today']})**"]
     near = info["nearest"]
     if near and near["dday"] <= 3:
-        lines.append(f"⏰ **{near['label']} D-{near['dday']}** ({near['date']})")
+        lines.append(f"**{near['label']} D-{near['dday']}** ({near['date']})")
     if info["todo"]:
         items = []
         for r in info["todo"]:
@@ -240,7 +240,7 @@ def briefing_text(info: dict, cert_name: str) -> str:
         lines.append(f"가장 가까운 마감: {near['label']} D-{near['dday']} ({near['date']})")
     lines.append(f"진행률 {info['percent']}% · 지연 {info['delay_days']:g}일({info['delay_hours']:g}시간)")
     if info["needs_readjust"]:
-        lines.append("⚠️ 지연이 재조정 기준(3일 이상 또는 주당 시간의 50% 초과)을 넘었어요. 학습 공간에서 재조정할 수 있어요.")
+        lines.append("지연이 재조정 기준(3일 이상 또는 주당 시간의 50% 초과)을 넘었어요. 학습 공간에서 재조정할 수 있어요.")
     if info["suggest_shrink"]:
         lines.append(f"{info.get('idle_days', 3)}일째 완료 체크가 없어요. 계획을 줄이고 싶으면 채팅에서 '계획 줄여줘'라고 말해 주세요.")
     return "\n\n".join(lines)
@@ -278,24 +278,24 @@ def space_markdown(state: dict, info: dict | None) -> str:
     if info:
         out += [briefing_text(info, target.get("name", "")), ""]
     out += [
-        "## 🎯 목표",
+        "## 목표",
         f"- 자격증: {target.get('name', '미정')} / 희망 진로: {profile.get('desired_job') or '미입력'}",
         f"- 상태: {target.get('state', '준비중')} / 목표 시험일: {target.get('exam_date') or '미확인'}", "",
-        "## 🗓 공식 일정",
+        "## 공식 일정",
         f"- 원서접수: {target.get('reg_start') or '미확인'} ~ {target.get('reg_end') or '미확인'}",
         f"- 시험일: {target.get('exam_date') or '미확인'} / 합격자 발표: {target.get('result_date') or '미확인'}",
         f"- 응시료: {target.get('fee') or '미확인'}",
         f"- 근거: {target.get('basis') or '미확인'} / 링크: {target.get('source_url') or '미확인'} / 확인 날짜: {target.get('checked_at') or '미확인'}", "",
-        "## 👤 학습 조건",
+        "## 학습 조건",
         f"- 학습 방식: {profile.get('learning_style') or '미입력'} / 비용 기준: {profile.get('cost_pref') or '미입력'}",
         f"- 주당 가용시간: {profile.get('weekly_hours') or '미입력'}시간 · 주 {profile.get('study_days') or '미입력'}일",
         f"- 보유 자격증: {', '.join(profile.get('owned') or []) or '없음'}", "",
     ]
     if plan:
         stats = progress(plan)
-        out += ["## 📊 진행률", f"- 전체 {stats['percent']}% / 단계별: " + ", ".join(f"{k} {v}%" for k, v in stats["by_phase"].items())]
-        out += [f"- 재조정 이력: {'; '.join(plan['history']) or '없음'}", "", "## 📅 주차별 계획", "",
+        out += ["## 진행률", f"- 전체 {stats['percent']}% / 단계별: " + ", ".join(f"{k} {v}%" for k, v in stats["by_phase"].items())]
+        out += [f"- 재조정 이력: {'; '.join(plan['history']) or '없음'}", "", "## 주차별 계획", "",
                 "| 주차 | 단계 | 기간 | 예상 시간 | 할 일 | 완료 | 완료일 | 메모 |", "| --- | --- | --- | --- | --- | --- | --- | --- |"]
         for r in plan["rows"]:
-            out.append(f"| {r['week']} | {r['phase']} | {r['start']} ~ {r['end']} | {r['hours']:g}h | {r['task']} | {'✅' if r['done'] else '⬜'} | {r.get('done_at') or ''} | {r['memo']} |")
+            out.append(f"| {r['week']} | {r['phase']} | {r['start']} ~ {r['end']} | {r['hours']:g}h | {r['task']} | {'완료' if r['done'] else '-'} | {r.get('done_at') or ''} | {r['memo']} |")
     return "\n".join(out) + "\n"
