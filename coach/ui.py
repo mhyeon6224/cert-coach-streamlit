@@ -56,7 +56,7 @@ header[data-testid="stHeader"] {{ background: transparent; height: 0; }}
 
 /* ---------- 카드 안 제목 ---------- */
 .cc-sh {{ margin: 2px 0 10px; }}
-.cc-sh h2 {{ font-size: 18px; font-weight: 900; color: {INK}; margin: 0; padding: 0; }}
+.cc-sh h2 {{ font-size: 18px !important; font-weight: 900 !important; color: {INK}; margin: 0; padding: 0; }}
 .cc-sh span {{ font-size: 12px; color: {MUTED}; }}
 .cc-label {{ font-size: 12px; font-weight: 700; color: {BLUE}; margin: 14px 0 6px; }}
 .cc-rank {{ display: flex; align-items: baseline; gap: 10px; margin: 6px 0 8px; flex-wrap: wrap; }}
@@ -91,6 +91,7 @@ header[data-testid="stHeader"] {{ background: transparent; height: 0; }}
 .cc-table th {{ background: {SOFT}; color: {MUTED}; font-weight: 700; text-align: left; padding: 9px 12px; border-bottom: 1px solid {LINE}; white-space: nowrap; }}
 .cc-table td {{ padding: 10px 12px; border-bottom: 1px solid {LINE}; background: #fff; vertical-align: top; line-height: 1.55; }}
 .cc-table tr:last-child td {{ border-bottom: 0; }}
+.cc-table td:first-child {{ white-space: nowrap; }}
 .cc-table a {{ color: {BLUE}; text-decoration: none; font-weight: 700; }}
 .cc-scroll {{ overflow-x: auto; }}
 .stMarkdown table:not(.cc-table) {{ border-collapse: collapse; width: 100%; font-size: 13px; }}
@@ -112,6 +113,18 @@ header[data-testid="stHeader"] {{ background: transparent; height: 0; }}
 [data-testid="stTab"][aria-selected="true"] p {{ color: #fff; }}
 [role="tablist"] > :not([data-testid="stTab"]) {{ display: none; }}
 .stTabs [data-baseweb="tab-highlight"], .stTabs [data-baseweb="tab-border"] {{ display: none; }}
+
+.react-aria-SelectionIndicator {{ display: none !important; }}
+[role="tablist"]::before, [role="tablist"]::after, [data-testid="stTab"]::before, [data-testid="stTab"]::after {{ display: none !important; }}
+[data-testid="stTab"] {{ border-bottom: 1px solid {LINE} !important; }}
+[data-testid="stTab"][aria-selected="true"] {{ border-bottom-color: {BLUE} !important; }}
+
+/* 좁은 화면: 대화 패널을 위에, 대시보드를 아래에 쌓는다 */
+@media (max-width: 900px) {{
+  [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] .cc-coach) {{ flex-direction: column; }}
+  [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] .cc-coach) > [data-testid="stColumn"] {{ width: 100% !important; min-width: 100% !important; flex: 1 1 100% !important; }}
+  [class*="st-key-cardchat"] {{ height: 340px !important; }}
+}}
 
 /* ---------- 버튼 ---------- */
 .stButton > button, .stDownloadButton > button, .stLinkButton > a, [data-testid="stFormSubmitButton"] > button {{

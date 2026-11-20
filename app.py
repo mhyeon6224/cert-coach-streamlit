@@ -564,10 +564,10 @@ with tab_profile:
         ui.section("프로필", "필요한 것만 채우면 돼요 · 대화에서 말한 조건도 여기에 반영돼요")
         f1, f2 = st.columns(2)
         job = f1.text_input("진로 / 관심 직무", P["desired_job"], placeholder="예: 데이터 분석")
-        style = f2.selectbox("학습 방식", ["", *engine.STYLE_OPTIONS],
+        style = f2.selectbox("학습 방식", ["", *engine.STYLE_OPTIONS], format_func=lambda v: v or "선택 안 함",
                              index=(["", *engine.STYLE_OPTIONS].index(P["learning_style"]) if P["learning_style"] in engine.STYLE_OPTIONS else 0))
         major = f1.text_input("전공·경험", P["major_experience"], placeholder="예: 경영학 전공, 인턴 3개월")
-        cost = f2.selectbox("비용 선호", ["", *engine.COST_OPTIONS],
+        cost = f2.selectbox("비용 선호", ["", *engine.COST_OPTIONS], format_func=lambda v: v or "선택 안 함",
                             index=(["", *engine.COST_OPTIONS].index(P["cost_pref"]) if P["cost_pref"] in engine.COST_OPTIONS else 0))
         hours = f1.number_input("주당 가용 시간", 0.0, 80.0, float(P["weekly_hours"] or 0), 0.5)
         days = f2.number_input("주당 공부 일수", 1, 7, int(P["study_days"] or 5))
