@@ -15,6 +15,7 @@ from . import plan as planner
 
 API = "https://api.notion.com/v1"
 VERSION = "2022-06-28"
+VIEWS_VERSION = "2026-03-11"  # 데이터베이스 보기(달력) API는 새 버전에서만 된다
 TOKEN_PATTERN = re.compile(r"^(ntn_|secret_)[A-Za-z0-9]{20,}$")
 
 
@@ -36,8 +37,8 @@ def token_looks_valid(token: str) -> bool:
     return bool(TOKEN_PATTERN.match((token or "").strip()))
 
 
-def _headers(token: str) -> dict:
-    return {"Authorization": f"Bearer {token.strip()}", "Notion-Version": VERSION, "Content-Type": "application/json"}
+def _headers(token: str, version: str = VERSION) -> dict:
+    return {"Authorization": f"Bearer {token.strip()}", "Notion-Version": version, "Content-Type": "application/json"}
 
 
 def _text(content: str, bold: bool = False, link: str | None = None) -> dict:
@@ -163,38 +164,73 @@ def _event_props(event: dict) -> dict:
     return props
 
 
+def _calendar_view(token: str, database: str, source: str, fresh: bool) -> str:
+    """'주요 일정'에 달력 보기가 없으면 만든다. 반환: "있음" | "만듦" """
+    listed = _request("GET", f"{API}/views", token, VIEWS_VERSION, params={"database_id": database, "page_size": 50}).get("results", [])
+    views = [_request("GET", f"{API}/views/{v['id']}", token, VIEWS_VERSION) for v in listed[:10]]
+    if any(v.get("type") == "calendar" for v in views):
+        return "있음"
+    props = _request("GET", f"{API}/data_sources/{source}", token, VIEWS_VERSION).get("properties", {})
+    date_id = (props.get("날짜") or {}).get("id")
+    if not date_id:
+        raise NotionError("'날짜' 속성을 찾지 못해 달력 보기를 만들지 못했어요.")
+    _request("POST", f"{API}/views", token, VIEWS_VERSION, json={
+        "database_id": database, "data_source_id": source, "name": "달력", "type": "calendar", "position": {"type": "start"},
+        "configuration": {"type": "calendar", "date_property_id": date_id, "view_range": "month", "show_weekends": True}})
+    if fresh:  # 방금 만든 DB라면 자동으로 생긴 표 보기는 지워 달력만 남긴다 (실패해도 문제없음)
+        for view in views:
+            if view.get("type") == "table":
+                try:
+                    _request("DELETE", f"{API}/views/{view['id']}", token, VIEWS_VERSION)
+                except NotionError:
+                    pass
+    return "만듦"
+
+
 def ensure_calendar(token: str, page_id: str, blocks: list[dict], target: dict) -> dict:
-    """학습 공간 페이지 안에 '주요 일정' 데이터베이스를 만들거나, 이미 있으면 빠진 일정을 넣고 바뀐 날짜를 고친다."""
+    """학습 공간 페이지 안에 '주요 일정' 데이터베이스(달력 보기)를 만들거나, 이미 있으면 빠진 일정을 넣고 바뀐 날짜를 고친다."""
     existing: dict[str, tuple[str, str | None]] = {}
     found = next((b for b in blocks if b.get("type") == "child_database" and (b.get("child_database") or {}).get("title") == CAL_TITLE), None)
-    created = False
+    result = {"created": False, "added": 0, "updated": 0, "view": None, "view_error": None}
     if found:
         database = found["id"]
-        rows = _request("POST", f"{API}/databases/{database}/query", token, json={"page_size": 100}).get("results", [])
+        source = (_request("GET", f"{API}/databases/{database}", token, VIEWS_VERSION).get("data_sources") or [{}])[0].get("id")
+        if not source:
+            raise NotionError("'주요 일정' 데이터베이스를 읽지 못했어요.")
+        rows = _request("POST", f"{API}/data_sources/{source}/query", token, VIEWS_VERSION, json={"page_size": 100}).get("results", [])
         for row in rows:
             props = row.get("properties", {})
             title = "".join(t.get("plain_text", "") for t in (props.get("일정") or {}).get("title", []))
             existing[title] = (row["id"], ((props.get("날짜") or {}).get("date") or {}).get("start"))
     else:
-        database = _request("POST", f"{API}/databases", token, json={
+        made = _request("POST", f"{API}/databases", token, VIEWS_VERSION, json={
             "parent": {"type": "page_id", "page_id": page_id}, "is_inline": True,
             "title": [_text(CAL_TITLE)], "icon": {"type": "emoji", "emoji": "🗓"},
-            "properties": {"일정": {"title": {}}, "날짜": {"date": {}}, "메모": {"rich_text": {}},
-                           "종류": {"select": {"options": [{"name": "접수", "color": "blue"}, {"name": "시험", "color": "red"},
-                                                           {"name": "발표", "color": "green"}, {"name": "확인 필요", "color": "gray"}]}}}})["id"]
-        created = True
-    added = updated = 0
+            "initial_data_source": {"properties": {
+                "일정": {"title": {}}, "날짜": {"date": {}}, "메모": {"rich_text": {}},
+                "종류": {"select": {"options": [{"name": "접수", "color": "blue"}, {"name": "시험", "color": "red"},
+                                                {"name": "발표", "color": "green"}, {"name": "확인 필요", "color": "gray"}]}}}}})
+        database, source = made["id"], (made.get("data_sources") or [{}])[0].get("id")
+        if not source:
+            raise NotionError("'주요 일정' 데이터베이스를 만들었지만 내용을 넣을 위치를 찾지 못했어요.")
+        result["created"] = True
     for event in calendar_events(target):
         if event["title"] not in existing:
-            _request("POST", f"{API}/pages", token, json={"parent": {"database_id": database}, "properties": _event_props(event)})
-            added += 1
+            _request("POST", f"{API}/pages", token, VIEWS_VERSION,
+                     json={"parent": {"type": "data_source_id", "data_source_id": source}, "properties": _event_props(event)})
+            result["added"] += 1
         elif event["date"] and existing[event["title"]][1] != event["date"]:
-            _request("PATCH", f"{API}/pages/{existing[event['title']][0]}", token, json={"properties": {"날짜": {"date": {"start": event["date"]}}}})
-            updated += 1
+            _request("PATCH", f"{API}/pages/{existing[event['title']][0]}", token, VIEWS_VERSION,
+                     json={"properties": {"날짜": {"date": {"start": event["date"]}}}})
+            result["updated"] += 1
         else:
             continue
         time.sleep(0.35)
-    return {"created": created, "added": added, "updated": updated}
+    try:
+        result["view"] = _calendar_view(token, database, source, result["created"])
+    except NotionError as error:
+        result["view_error"] = str(error)
+    return result
 
 
 # ---------------------------------------------------------------- 동기화 (Notion ↔ 앱)
@@ -221,10 +257,10 @@ def _key(block: dict):
     return None
 
 
-def _request(method: str, url: str, token: str, **kwargs) -> dict:
+def _request(method: str, url: str, token: str, version: str = VERSION, **kwargs) -> dict:
     for attempt in range(3):
         try:
-            response = requests.request(method, url, headers=_headers(token), timeout=20, **kwargs)
+            response = requests.request(method, url, headers=_headers(token, version), timeout=20, **kwargs)
         except requests.RequestException:
             raise NotionError("Notion 서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.") from None
         if response.status_code == 429 and attempt < 2:
@@ -236,7 +272,12 @@ def _request(method: str, url: str, token: str, **kwargs) -> dict:
         reasons = {"unauthorized": "토큰이 맞지 않아요. Integration의 Secret을 다시 복사해 주세요.",
                    "object_not_found": "그 페이지를 찾지 못했어요. 앱이 만든 '학습 공간' 페이지의 링크인지, 연결(Connections)이 되어 있는지 확인해 주세요.",
                    "restricted_resource": "Integration에 읽기·쓰기 권한이 없어요. Capabilities에서 Read·Update·Insert content를 켜 주세요."}
-        raise NotionError(reasons.get(code, f"Notion 요청에 실패했어요 (HTTP {response.status_code})."))
+        detail = ""
+        try:
+            detail = str(response.json().get("message", ""))[:160]
+        except ValueError:
+            pass
+        raise NotionError(reasons.get(code, f"Notion 요청에 실패했어요 (HTTP {response.status_code}{' · ' + detail if detail else ''})."))
     raise NotionError("요청이 너무 많아요. 잠시 뒤 다시 시도해 주세요.")
 
 

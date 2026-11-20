@@ -140,9 +140,52 @@ def calendar_line(result: dict | None, error: str | None) -> str:
         return f"주요 일정 달력: 못 함 — {error}"
     if not result:
         return ""
-    made = "새로 만들고 " if result["created"] else ""
-    return (f"주요 일정 달력: {made}일정 {result['added']}개 추가" + (f", 날짜 {result['updated']}개 수정" if result["updated"] else "")
-            if result["created"] or result["added"] or result["updated"] else "주요 일정 달력: 바뀐 것 없음")
+    parts = []
+    if result["created"]:
+        parts.append("새로 만듦")
+    if result["added"]:
+        parts.append(f"일정 {result['added']}개 추가")
+    if result["updated"]:
+        parts.append(f"날짜 {result['updated']}개 수정")
+    if result.get("view") == "만듦":
+        parts.append("달력 보기 추가")
+    line = "주요 일정 달력: " + (", ".join(parts) or "바뀐 것 없음")
+    if result.get("view_error"):
+        line += f" · 달력 보기는 못 만듦({result['view_error']}) — Notion에서 표 위 + → Calendar로 추가할 수 있어요"
+    return line
+
+
+def remembered_token() -> str:
+    """이 창에서 쓴 토큰, 없으면 계정에 기억해 둔 토큰."""
+    if st.session_state.get("notion_token"):
+        return st.session_state["notion_token"]
+    auth_now = st.session_state.get("auth")
+    if auth_now and "notion_token_loaded" not in st.session_state:
+        st.session_state["notion_token_loaded"] = True
+        try:
+            st.session_state["notion_token"] = storage.get_meta(store, "notion", auth_now["nickname"]).get("token", "")
+        except storage.StoreError:
+            pass
+    return st.session_state.get("notion_token", "")
+
+
+def remember_box(key: str) -> bool:
+    """토큰을 계정에 기억할지 묻는다. 로그인한 경우에만."""
+    if not st.session_state.get("auth"):
+        st.caption("오른쪽 위 프로필에서 로그인하면 토큰과 페이지 링크를 계정에 기억해 둘 수 있어요.")
+        return False
+    return st.checkbox("이 토큰을 내 계정에 기억하기 (다음부터 다시 붙여 넣지 않아도 돼요)", value=True, key=key,
+                       help="계정 DB에 저장돼요. 지우려면 체크를 풀고 다시 실행하거나 프로필 메뉴에서 '기억한 Notion 토큰 지우기'를 누르세요.")
+
+
+def keep_token(token: str, remember: bool) -> None:
+    st.session_state["notion_token"] = token.strip()
+    auth_now = st.session_state.get("auth")
+    if auth_now:
+        try:
+            storage.put_meta(store, "notion", auth_now["nickname"], {"token": token.strip()} if remember else {})
+        except storage.StoreError:
+            pass
 
 
 def notion_sync(token: str, link: str, today_value, hours: float, active: bool) -> list[str]:
@@ -173,10 +216,12 @@ def notion_sync(token: str, link: str, today_value, hours: float, active: bool) 
     return lines
 
 
-def run_sync(token: str, link: str, today_value, hours: float, active: bool) -> None:
+def run_sync(token: str, link: str, today_value, hours: float, active: bool, remember: bool | None = None) -> None:
     """동기화하고 결과를 화면 위 알림으로 남긴 뒤 다시 그린다(진행률 타일·표에 바로 반영)."""
     lines = notion_sync(token, link, today_value, hours, active)
     st.session_state["notion_token"] = token.strip()
+    if remember is not None:
+        keep_token(token, remember)
     S["notion"] = {"url": link.strip()}
     st.session_state["flash"] = "Notion과 동기화했어요.\n\n" + "\n".join(f"- {line}" for line in lines if line)
     st.rerun()
@@ -193,14 +238,14 @@ NOTION_GUIDE = (
 
 @st.dialog("Notion에 학습 공간 만들기", width="large")
 def notion_dialog(info) -> None:
-    st.markdown(ui.badges([("내 Notion에만 저장", "navy"), ("토큰은 DB에 저장하지 않아요", "good")]), unsafe_allow_html=True)
+    st.markdown(ui.badges([("내 Notion에만 저장", "navy"), ("토큰은 동의할 때만 계정에 기억", "good")]), unsafe_allow_html=True)
     st.markdown("고른 페이지 아래에 **학습 공간 페이지를 새로 하나** 만들어요. 주차별 계획(체크박스)과 **주요 일정 달력**이 들어가요.")
     if (S.get("notion") or {}).get("url"):
         st.warning("이미 만든 학습 공간이 있어요. 여기서 만들면 페이지가 하나 더 생겨요. 체크를 맞추려면 이 창을 닫고 'Notion과 동기화'를 눌러 주세요.")
-    with st.expander("처음이라면: 3분 준비 방법", expanded=not st.session_state.get("notion_token")):
+    with st.expander("처음이라면: 3분 준비 방법", expanded=not remembered_token()):
         st.markdown(NOTION_GUIDE)
-    token = st.text_input("① 토큰", type="password", value=st.session_state.get("notion_token", ""),
-                          placeholder="ntn_...", help="이 브라우저 창에서만 기억하고, 서버 DB에는 저장하지 않아요.")
+    token = st.text_input("① 토큰", type="password", value=remembered_token(), placeholder="ntn_...")
+    remember = remember_box("remember_make")
     link = st.text_input("② 학습 공간을 넣을 페이지 링크", value=st.session_state.get("notion_parent", ""),
                          placeholder="https://www.notion.so/...")
     agree = st.checkbox("내 Notion에 페이지를 새로 만드는 데 동의해요")
@@ -208,13 +253,13 @@ def notion_dialog(info) -> None:
         try:
             with st.spinner("Notion에 페이지를 만드는 중이에요…"):
                 made = notion.create_space(token, link, S, info)
-            st.session_state["notion_token"], st.session_state["notion_parent"] = token.strip(), link.strip()
+            st.session_state["notion_parent"] = link.strip()
+            keep_token(token, remember)
             S["notion"] = {"url": made["url"]}
             st.success("페이지를 만들었어요. 완료는 Notion에서 체크하고, 계획 탭의 'Notion과 동기화'로 맞추면 돼요.")
             note = calendar_line(made["calendar"], made["calendar_error"])
             if note:
                 st.markdown(f"- {note}")
-            st.caption("달력으로 보려면 Notion에서 '주요 일정' 표 위의 + 를 눌러 **Calendar(캘린더)** 보기를 추가해 주세요. (보기 추가는 Notion이 앱에 허용하지 않아요.)")
             if made["url"]:
                 st.link_button("Notion에서 열기", made["url"])
         except notion.NotionError as error:
@@ -225,8 +270,8 @@ def notion_dialog(info) -> None:
 @st.dialog("Notion과 동기화", width="large")
 def notion_sync_dialog(today_value, hours: float, active: bool) -> None:
     st.markdown("Notion에서 체크한 완료를 앱으로 가져오고, 진행률·오늘 브리핑·주차별 계획·주요 일정을 **같은 페이지에** 다시 써요. 새 페이지는 만들지 않아요.")
-    token = st.text_input("토큰", type="password", value=st.session_state.get("notion_token", ""), placeholder="ntn_...",
-                          help="이 브라우저 창에서만 기억하고, 서버 DB에는 저장하지 않아요.")
+    token = st.text_input("토큰", type="password", value=remembered_token(), placeholder="ntn_...")
+    remember = remember_box("remember_sync")
     page = st.text_input("학습 공간 페이지 링크", value=(S.get("notion") or {}).get("url", ""),
                          placeholder="앱이 만든 'OOO 학습 공간' 페이지의 링크",
                          help="Notion에서 'OOO 학습 공간' 페이지를 열고 ⋯ → 링크 복사. 그 페이지를 넣어 둔 상위 페이지 링크가 아니에요.")
@@ -234,25 +279,49 @@ def notion_sync_dialog(today_value, hours: float, active: bool) -> None:
     if st.button("동기화하기", type="primary", disabled=not (token and page and agree)):
         try:
             with st.spinner("Notion을 읽고 다시 쓰는 중이에요…"):
-                run_sync(token, page, today_value, hours, active)
+                run_sync(token, page, today_value, hours, active, remember)
         except notion.NotionError as error:
             st.error(f"동기화하지 못했어요. {error}")
 
 
 # ------------------------------------------------------------------ 사이드바
+def memo_pad() -> None:
+    """프로필 메뉴의 메모장: 자주 붙여 넣는 링크·메모를 적어 둔다."""
+    with st.form("memo_form", border=False):
+        text = st.text_area("내 메모장", S.get("memo", ""), height=130,
+                            placeholder="예: Notion 학습 공간 링크, 접수 사이트 주소, 수험번호 메모 …",
+                            help="로그인하면 계정에 저장돼요. 로그인 전에는 이 창을 닫으면 사라져요.")
+        if st.form_submit_button("메모 저장", use_container_width=True):
+            S["memo"] = text
+            st.toast("메모를 저장했어요.")
+    linked = (S.get("notion") or {}).get("url")
+    if linked:
+        st.caption("연결된 Notion 학습 공간")
+        st.code(linked, language=None)
+
+
 def account_panel() -> None:
     """상단바 프로필 메뉴: 로그인·새 계정·로그아웃."""
     auth = st.session_state.get("auth")
     if auth:
-        ui.profile_card(auth["nickname"], "조건·계획·대화가 자동 저장돼요")
+        ui.profile_card(auth["nickname"], "조건·계획·대화·메모가 자동 저장돼요")
         st.caption(f"저장 위치: {store.label}")
+        memo_pad()
+        if st.button("기억한 Notion 토큰 지우기", use_container_width=True, key="forget_notion"):
+            st.session_state.pop("notion_token", None)
+            try:
+                storage.put_meta(store, "notion", auth["nickname"], {})
+                st.toast("Notion 토큰을 지웠어요.")
+            except storage.StoreError as error:
+                st.error(str(error))
         if st.button("로그아웃", use_container_width=True, key="logout"):
-            for key in ("auth", "saved_digest"):
+            for key in ("auth", "saved_digest", "notion_token", "notion_token_loaded"):
                 st.session_state.pop(key, None)
             st.session_state["S"] = new_state()
             st.rerun()
         return
     ui.profile_card(None, "로그인하면 다시 접속해도 이어서 할 수 있어요")
+    memo_pad()
     with st.form("account", border=False):
         nick = st.text_input("닉네임")
         account_pw = st.text_input("계정 비밀번호", type="password", help="다른 서비스에서 쓰는 비밀번호는 쓰지 마세요.")
@@ -637,10 +706,10 @@ with tab_space, st.container(border=True, key="card7"):
                         if linked_url else "아직 연결된 페이지가 없어요. 처음이면 '새로 만들기', 이미 만든 페이지가 있으면 '동기화'에서 그 페이지 링크를 넣어 주세요."))
             n1, n2, n3 = st.columns(3)
             if n1.button("Notion과 동기화", type="primary", use_container_width=True):
-                if st.session_state.get("notion_token") and linked_url:
+                if remembered_token() and linked_url:
                     try:
                         with st.spinner("Notion을 읽고 다시 쓰는 중이에요…"):
-                            run_sync(st.session_state["notion_token"], linked_url, today, hours, active)
+                            run_sync(remembered_token(), linked_url, today, hours, active)
                     except notion.NotionError as error:
                         st.error(f"동기화하지 못했어요. {error}")
                 else:
