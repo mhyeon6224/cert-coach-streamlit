@@ -215,8 +215,10 @@ def log_result(state: dict, result: str, today: date) -> tuple[str, int] | None:
     """합격·불합격을 시험 이력에 남긴다(다음 추천·학습 경로에 반영). 불합격이면 가장 부족했던 단계도 함께 적는다."""
     target = state["target"]
     weak = planner.weakest_phase(state["plan"]) if result == "불합격" and state.get("plan") else None
+    report = planner.diagnose(state.get("plan"), target.get("exam_date"))  # 주차별 실행 기록 진단(합격도 완료율은 남긴다)
     entry = {"cert": target.get("name") or "", "result": result, "date": today.isoformat(),
-             "weak_phase": weak[0] if weak else "", "weak_percent": weak[1] if weak else None}
+             "weak_phase": weak[0] if weak else "", "weak_percent": weak[1] if weak else None,
+             "exam_date": target.get("exam_date") or "", "diagnosis": report}
     history = state["profile"].setdefault("exam_history", [])
     history[:] = [h for h in history if not (h.get("cert") == entry["cert"] and h.get("date") == entry["date"])]
     history.append(entry)
@@ -407,8 +409,10 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
     if intent == "failed":
         target["state"] = "불합격"
         weak = log_result(state, "불합격", today)
-        fact = f"학습 공간 기록으로는 **{weak[0]} 단계 완료율이 {weak[1]}%**로 가장 낮았어요." if weak else \
-            "저장된 학습 기록이 없어 부족했던 단계는 확인하지 못했어요."
+        report = state["profile"]["exam_history"][-1]["diagnosis"]
+        fact = ("##### 주차별 실행 기록으로 본 진단\n" + "\n".join(f"- {line}" for line in report["findings"])
+                + f"\n\n**다음에는** {report['next']}\n\n"
+                + "앱에 남은 완료 체크만으로 본 내용이에요. 시험 점수나 과목별 성적은 알 수 없어요. '프로필' 탭의 시험 이력에서 다시 볼 수 있어요.")
         state["boost_phase"] = weak[0] if weak else None
         state["plan"] = None
         target.update(exam_date=None, reg_start=None, reg_end=None, result_date=None, basis=None)

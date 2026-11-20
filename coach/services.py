@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from urllib.parse import urlsplit
 
 import requests
@@ -37,48 +38,65 @@ class LLM:
         self.api_key, self.model, self.base_url = api_key, model, base_url.rstrip("/")
 
     def chat(self, messages: list[dict], *, temperature: float = 0.2, max_tokens: int = 1800,
-             json_mode: bool = False) -> str:
-        # LLM_MODEL에 쉼표로 여러 모델을 적으면, 앞 모델이 혼잡(429·5xx)하거나 응답이 늦을 때 다음 모델로 넘어간다.
+             json_mode: bool = False, accept=None):
+        """LLM_MODEL에 쉼표로 여러 모델을 적으면 앞 모델이 혼잡(429·5xx)하거나 늦을 때 다음 모델로 넘어간다.
+
+        accept(text)를 주면 그 함수가 받아들인 값(예: 해석된 JSON)을 돌려준다. 받아들이지 못하면(ValueError)
+        같은 요청을 다음 모델에 보낸다. 모든 모델이 한 번씩 실패하면 잠깐 쉬고 한 바퀴 더 돈다.
+        """
         models = [m.strip() for m in self.model.split(",") if m.strip()]
         failure = LLMError("LLM 모델이 설정되지 않았어요")
-        for index, model in enumerate(models):
-            body = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
-            if json_mode:
-                body["response_format"] = {"type": "json_object"}
-            last = index == len(models) - 1
-            try:
-                response = requests.post(
-                    f"{self.base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-                    json=body, timeout=60 if last else 25,
-                )
-                if response.status_code >= 400:
-                    failure = LLMError(f"LLM 응답 오류 (HTTP {response.status_code})")
-                    if response.status_code in (404, 408, 429) or response.status_code >= 500:
-                        continue
-                    raise failure
-                return response.json()["choices"][0]["message"]["content"] or ""
-            except LLMError:
-                raise
-            except Exception as error:  # 네트워크·형식 오류. 키가 섞일 수 있는 원문은 싣지 않는다.
-                failure = LLMError(f"LLM 호출 실패 ({type(error).__name__})")
+        for lap in range(2):
+            if lap:
+                time.sleep(4)
+            for index, model in enumerate(models):
+                body = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
+                if json_mode:
+                    body["response_format"] = {"type": "json_object"}
+                last = lap == 1 and index == len(models) - 1
+                try:
+                    response = requests.post(
+                        f"{self.base_url}/chat/completions",
+                        headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+                        json=body, timeout=60 if last else 30,
+                    )
+                    if response.status_code >= 400:
+                        failure = LLMError(f"LLM 응답 오류 (HTTP {response.status_code})")
+                        if response.status_code in (404, 408, 429) or response.status_code >= 500:
+                            continue
+                        raise failure
+                    text = response.json()["choices"][0]["message"]["content"] or ""
+                    if accept is None:
+                        return text
+                    try:
+                        return accept(text)
+                    except ValueError as error:  # 형식이 깨진 답: 다음 모델에 다시 묻는다
+                        failure = LLMError(str(error))
+                except LLMError:
+                    raise
+                except Exception as error:  # 네트워크·형식 오류. 키가 섞일 수 있는 원문은 싣지 않는다.
+                    failure = LLMError(f"LLM 호출 실패 ({type(error).__name__})")
         raise failure from None
 
     def json(self, messages: list[dict], **kwargs) -> dict:
-        text = self.chat(messages, json_mode=True, **kwargs)
+        return self.chat(messages, json_mode=True, accept=_parse_json, **kwargs)
+
+
+def _parse_json(text: str) -> dict:
+    """모델 답에서 JSON 객체를 꺼낸다. 깨져 있으면 ValueError(다른 모델에 다시 묻게 된다)."""
+    candidates = [text]
+    match = re.search(r"\{.*\}", text or "", re.S)
+    if match:
+        candidates.append(match.group(0))
+        candidates.append(re.sub(r",\s*([}\]])", lambda m: m.group(1), match.group(0)))  # 닫는 괄호 앞의 남는 쉼표
+    for candidate in candidates:
         try:
-            data = json.loads(text)
-        except json.JSONDecodeError:
-            match = re.search(r"\{.*\}", text, re.S)
-            if not match:
-                raise LLMError("LLM이 JSON을 반환하지 않았어요") from None
-            try:
-                data = json.loads(match.group(0))
-            except json.JSONDecodeError:
-                raise LLMError("LLM JSON 해석 실패") from None
-        if not isinstance(data, dict):
-            raise LLMError("LLM JSON 형식 오류")
-        return data
+            data = json.loads(candidate, strict=False)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(data, dict):
+            return data
+    raise ValueError("LLM JSON 해석 실패")
 
 
 class SearchError(RuntimeError):

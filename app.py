@@ -990,10 +990,34 @@ with tab_profile:
     with st.container(border=True, key="card14"):
         ui.section("시험 이력", "합격·불합격을 알려 주면 여기에 쌓이고, 다음 추천에 반영돼요")
         if P.get("exam_history"):
-            ui.table(["자격증", "결과", "날짜", "가장 부족했던 단계"],
-                     [[h.get("cert", ""), (h.get("result", ""), "good" if h.get("result") == "합격" else "warn"), h.get("date", ""),
-                       f"{h['weak_phase']} (완료율 {h['weak_percent']}%)" if h.get("weak_phase") else "기록 없음"]
-                      for h in reversed(P["exam_history"])])
+            _passed = [h for h in reversed(P["exam_history"]) if h.get("result") == "합격"]
+            _failed = [h for h in reversed(P["exam_history"]) if h.get("result") != "합격"]
+            _rate = lambda h: f"{h['diagnosis']['percent']}%" if (h.get("diagnosis") or {}).get("has_plan") else "계획 기록 없음"
+            ui.label(f"합격한 자격증 ({len(_passed)})")
+            if _passed:
+                ui.table(["자격증", "합격을 알린 날", "시험일", "계획 완료율"],
+                         [[h.get("cert", ""), h.get("date", ""), h.get("exam_date") or "기록 없음", _rate(h)] for h in _passed])
+            else:
+                st.caption("아직 없어요.")
+            ui.label(f"불합격한 자격증 ({len(_failed)})")
+            if not _failed:
+                st.caption("아직 없어요.")
+            for h in _failed:
+                _dx = h.get("diagnosis") or {}
+                with st.container(border=True):
+                    st.markdown(f"**{h.get('cert', '')}** · 결과를 알린 날 {h.get('date', '')}"
+                                + (f" · 시험일 {h['exam_date']}" if h.get("exam_date") else ""))
+                    if _dx.get("has_plan"):
+                        ui.table(["전체", *_dx["by_phase"].keys()],
+                                 [[f"{_dx['percent']}% ({_dx['done_weeks']}/{_dx['weeks']}주차)", *[f"{v}%" for v in _dx["by_phase"].values()]]])
+                    if _dx.get("findings"):
+                        ui.label("주차별 실행 기록으로 본 원인")
+                        ui.steps(_dx["findings"])
+                        ui.box(_dx.get("next", ""), "blue", "다음에는")
+                    else:  # 진단 기능이 생기기 전에 남긴 기록
+                        st.caption(f"가장 부족했던 단계: {h['weak_phase']} (완료율 {h['weak_percent']}%)" if h.get("weak_phase")
+                                   else "이 기록에는 주차별 실행 진단이 없어요(진단 기능이 생기기 전의 기록).")
+            st.caption("진단은 앱에 남은 주차별 완료 체크만으로 만들어요. 시험 점수나 과목별 성적은 알 수 없어요.")
             if st.button("시험 이력 지우기", key="clear_history"):
                 P["exam_history"] = []
                 st.rerun()

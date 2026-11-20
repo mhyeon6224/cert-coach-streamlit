@@ -232,6 +232,57 @@ def weakest_phase(plan: dict) -> tuple[str, int] | None:
     return phase, by_phase[phase]
 
 
+def diagnose(plan: dict | None, exam_date: str | None = None) -> dict:
+    """시험 결과가 나왔을 때 주차별 계획을 실제로 어떻게 실행했는지 정리한다.
+
+    앱에 남은 완료 체크 기록만으로 말한다(시험 점수나 과목별 성적은 알 수 없다).
+    """
+    if not plan or not plan.get("rows"):
+        return {"has_plan": False, "findings": ["저장된 주차별 계획이 없어, 실행 기록으로 원인을 짚을 수 없어요."],
+                "next": "다음에는 \"학습 계획 세워줘\"로 계획을 만들고 주차마다 완료를 체크해 두면, 결과가 나왔을 때 어디가 비었는지 볼 수 있어요."}
+    rows = plan["rows"]
+    study = [r for r in rows if r["phase"] != "직전 복습"]
+    done = [r for r in rows if r["done"]]
+    stats = progress(plan)
+    by_phase = {p: v for p, v in stats["by_phase"].items() if p in PHASES}
+    late = [r for r in done if r.get("done_at") and r["done_at"] > r["end"]]
+    hours_all, hours_done = sum(r["hours"] for r in rows), sum(r["hours"] for r in done)
+    findings = [f"계획 {len(rows)}주차 가운데 {len(done)}주차를 완료했어요. 시간으로는 {hours_all:g}시간 중 {hours_done:g}시간(완료율 {stats['percent']}%)이에요."]
+    empty = [p for p, v in by_phase.items() if v == 0]
+    partial = sorted((p for p, v in by_phase.items() if 0 < v < 100), key=lambda p: by_phase[p])
+    if empty:
+        findings.append(f"완료 체크가 하나도 없는 단계: {', '.join(empty)}. 이 단계는 시작하지 못한 채 시험을 본 것으로 기록돼 있어요.")
+    if partial:
+        findings.append("끝까지 못 간 단계: " + ", ".join(f"{p} {by_phase[p]}%" for p in partial) + ".")
+    skipped = [r for r in study if not r["done"]]
+    skipped = [r for r in skipped if done and r["week"] < max(x["week"] for x in done)]
+    if skipped:
+        findings.append(f"중간에 건너뛴 주차가 있어요: {', '.join(str(r['week']) + '주차(' + r['phase'] + ')' for r in skipped[:5])}.")
+    if late:
+        findings.append(f"완료한 {len(done)}주차 가운데 {len(late)}주차는 마감일이 지난 뒤에 체크됐어요. 뒤 단계에 쓸 시간이 그만큼 줄었을 수 있어요.")
+    review = next((r for r in rows if r["phase"] == "직전 복습"), None)
+    if review and not review["done"]:
+        findings.append("시험 직전 3일 복습은 완료로 체크되지 않았어요.")
+    exam = exam_date or plan.get("exam_date")
+    last = max((r["done_at"] for r in done if r.get("done_at")), default="")
+    if last and exam:
+        gap = (d(exam) - d(last)).days
+        if gap >= 7:
+            findings.append(f"마지막 완료 체크는 {last}로, 시험일 {gap}일 전이에요. 그 뒤로는 실행 기록이 없어요.")
+    if plan.get("history"):
+        findings.append(f"계획을 {len(plan['history'])}번 재조정했어요.")
+    weak = min(by_phase, key=lambda p: by_phase[p]) if by_phase else None
+    if stats["percent"] >= 90:
+        nxt = ("계획은 거의 다 실행했어요. 실행량보다는 자료가 시험 유형과 맞았는지, 기출을 실제 시간에 맞춰 풀었는지를 따져 볼 차례예요. "
+               "(이 부분은 기록으로 확인할 수 없어 가능성으로만 말해요.)")
+    elif weak:
+        nxt = f"새 계획은 '{weak}' 비중을 10%p 올려서 만들어요. '계획' 탭의 기본 학습 순서에서 비중을 직접 더 조정할 수도 있어요."
+    else:
+        nxt = "다음 회차 일정을 확인한 뒤 계획을 새로 세워 주세요."
+    return {"has_plan": True, "percent": stats["percent"], "by_phase": by_phase, "weeks": len(rows), "done_weeks": len(done),
+            "late_weeks": len(late), "findings": findings, "next": nxt}
+
+
 def briefing_text(info: dict, cert_name: str) -> str:
     lines = [f"**오늘 브리핑 — {cert_name} ({info['today']})**"]
     near = info["nearest"]

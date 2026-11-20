@@ -506,7 +506,7 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
             {"role": "user", "content": json.dumps({"user_profile": profile_text(profile), "search_results": payload}, ensure_ascii=False)}],
             temperature=0.1, max_tokens=3200)
     except LLMError:
-        return "\n\n".join(head + ["못 함: 자료 요약에 실패했어요. 아래 검색 결과를 직접 확인해 주세요.", links])
+        return "\n\n".join(head + ["못 함: AI 서버가 지금 혼잡해서 자료를 요약하지 못했어요(여러 모델에 두 번씩 다시 시도했어요). 1~2분 뒤 다시 눌러 주세요. 그동안은 아래 검색 결과를 직접 볼 수 있어요.", links])
 
     if cost == "완전 무료" and _paid_mentions(raw):  # 유료 자료가 섞였으면 한 번만 다시 요청한다
         try:
@@ -773,7 +773,7 @@ def job_guideline(profile: dict, cert_names: list[str], llm: LLM | None, search:
                                                     "postings": payload}, ensure_ascii=False)}],
             temperature=0.1, max_tokens=1600)
     except LLMError:
-        return "**취업 가이드라인**\n\n못 함: 공고 분석에 실패했어요. 잠시 뒤 다시 시도해 주세요."
+        return "**취업 가이드라인**\n\n못 함: AI 서버가 지금 혼잡해서 공고를 분석하지 못했어요(여러 모델에 두 번씩 다시 시도했어요). 1~2분 뒤 다시 시도해 주세요."
     out = ["**취업 가이드라인**" + (f" · {job}" if job else ""), f"##### 직무 요약\n{raw.get('job_summary') or '미확인'}"]
     repeated, single, evidence = [], [], []
     for item in raw.get("competencies") or []:
