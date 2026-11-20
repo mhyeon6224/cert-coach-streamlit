@@ -452,7 +452,16 @@ def _paid_mentions(raw: dict) -> list[str]:
     return sorted({m.group(0) for text in texts for m in PAID_WORDS.finditer(text)})
 
 
-def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None, today: date) -> str:
+def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None, today: date,
+               detail: dict | None = None) -> str:
+    """강의·교재·기출 학습 경로. detail(dict)을 넘기면 화면에서 카드·표로 그릴 수 있게 같은 내용을 구조로도 담는다."""
+    cards: list[dict] = []
+
+    def card(kind: str, name: str, ids: list[int] | None = None, rows: list[tuple[str, str]] | None = None,
+             pros: list[str] | None = None, cons: list[str] | None = None) -> None:
+        cards.append({"kind": kind, "name": name, "sources": [[i + 1, hits[i]["url"]] for i in ids or []],
+                      "rows": [[k, v] for k, v in rows or [] if v], "pros": pros or [], "cons": cons or []})
+
     cost = profile.get("cost_pref") or ""
     head = [f"**{cert['name']} 학습 경로** — 사용한 정보: "
             f"{used_info(profile, ['learning_style', 'cost_pref', 'budget', 'weekly_hours', 'extra', 'exam_history'])}"]
@@ -597,8 +606,11 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
         costs.append(f"강의 {lecture_price}")
         lines.append(f"- 강의: {lecture[0]} {refs(lecture[1])}\n  - 가격: {lecture_price} / 전체 범위 cover: {known(basic['lecture'].get('coverage'))}"
                      f" / 무료 범위·유료 전환: {known(basic['lecture'].get('free_scope'))} / 확인 방식: 검색 원문 요약, {today.isoformat()}")
+        card("강의", lecture[0], lecture[1], [("가격", lecture_price), ("전체 범위", known(basic["lecture"].get("coverage"))),
+                                           ("무료 범위·유료 전환", known(basic["lecture"].get("free_scope")))])
     else:
         lines.append("- 강의: 후보 미확인 — 근거가 확인된 강의를 찾지 못했어요.")
+        card("강의", "후보 미확인", rows=[("상태", "근거가 확인된 강의를 찾지 못했어요.")])
     paid = cite(basic.get("paid_lecture")) if cost in ("유료 강의 허용", "시간 절약 우선") else None
     if paid and re.search(r"무료|교재|유튜브", paid[0]):  # 유료 인강이 아닌 것이 들어오면 후보로 쓰지 않는다
         paid = None
@@ -609,14 +621,19 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
         lines.append(f"- 유료 강의 후보: {paid[0]} {refs(paid[1])}\n  - 수강료: {paid_price}"
                      + (f"\n  - 돈을 낼 만한 이유: {why_pay}" if why_pay != "미확인" else "")
                      + "\n  - 위 무료 강의로 시작해 보고, 부족하면 이 강의를 고려하는 순서를 권해요.")
+        card("유료 강의 후보", paid[0], paid[1], [("수강료", paid_price), ("돈을 낼 만한 이유", "" if why_pay == "미확인" else why_pay),
+                                              ("권하는 순서", "무료 강의로 시작해 보고, 부족하면 고려")])
     elif cost in ("유료 강의 허용", "시간 절약 우선"):
         lines.append("- 유료 강의 후보: 미확인 — 검색한 글에서는 근거가 확인된 유료 강의를 찾지 못했어요.")
+        card("유료 강의 후보", "후보 미확인", rows=[("상태", "검색한 글에서는 근거가 확인된 유료 강의를 찾지 못했어요.")])
     item = cite(basic.get("past_exam"))
     if item and cost == "완전 무료" and PAID_WORDS.search(item[0]):
         item = None
     lines.append(f"- 기출·자료: {item[0]} {refs(item[1])}" if item else "- 기출·자료: 미확인")
+    card("기출·자료", item[0] if item else "미확인", item[1] if item else None)
     if cost == "완전 무료":
         lines.append("- 교재: 완전 무료 기준이라 교재 구매는 넣지 않았어요.")
+        card("교재", "구매 안 함", rows=[("이유", "완전 무료 기준이라 교재 구매는 넣지 않았어요.")])
         costs.append("교재 0원(구매 안 함)")
     else:
         for key, label in (("book", "교재(1순위)"), ("book_alt", "교재(대안)")):
@@ -624,6 +641,7 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
             item = cite(source)
             if not item:
                 lines.append(f"- {label}: 미확인 — 근거가 확인된 교재를 찾지 못했어요.")
+                card(label, "미확인", rows=[("상태", "근거가 확인된 교재를 찾지 못했어요.")])
                 continue
             book_cost = priced(source, item[1], item[0], 8000, 60000)
             if key == "book":
@@ -634,6 +652,9 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
                 + (f" / 맞는 경우: {known(source.get('fit'))}" if known(source.get("fit")) != "미확인" else "")
                 + f"\n  - 장점: {'; '.join(pros) if pros else '확인된 내용 없음'}"
                 + f"\n  - 단점·주의점: {'; '.join(cons) if cons else '검색한 글에서는 확인하지 못했어요(없다는 뜻은 아니에요)'}")
+            fit = known(source.get("fit"))
+            card(label, item[0], item[1], [("가격", book_cost), ("맞는 경우", "" if fit == "미확인" else fit)], pros,
+                 cons or ["검색한 글에서는 확인하지 못했어요(없다는 뜻은 아니에요)"])
     budget = (profile.get("budget") or "").strip()
     lines.append("- 예상 비용(확인된 가격만): " + " · ".join(costs)
                  + (f" / 입력한 예산: {budget}" if budget else "")
@@ -652,12 +673,20 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
         alt = None
     if alt:
         out.append(f"**대안 경로**: {alt[0]} {refs(alt[1])}")
-    repeated, single = [], []
+    repeated, single, reviews = [], [], []
     for kind, label in (("pros", "장점"), ("cons", "단점")):
         for item in raw.get(kind) or []:
             cited = cite(item)
             if cited:
                 (repeated if len(cited[1]) >= 2 else single).append(f"- {label}: {cited[0]} {refs(cited[1])}")
+                reviews.append({"kind": label, "text": cited[0], "repeated": len(cited[1]) >= 2,
+                                "sources": [[i + 1, hits[i]["url"]] for i in cited[1]]})
+    if detail is not None:
+        detail.update({
+            "cards": cards, "costs": costs, "budget": budget, "why": why, "reviews": reviews,
+            "alt": {"text": alt[0], "sources": [[i + 1, hits[i]["url"]] for i in alt[1]]} if alt else None,
+            "scope": f"{len(hits)}개 페이지, {today.isoformat()} 확인" + (" · 일부 검색 실패" if failed else ""),
+            "used": used_info(profile, ["learning_style", "cost_pref", "budget", "weekly_hours", "extra", "exam_history"])})
     review = ["**후기 근거**"]
     review.append("반복 확인된 의견\n" + "\n".join(repeated) if repeated else "반복 확인된 의견: 없음 — 구성 기준으로만 판단했어요.")
     if single:

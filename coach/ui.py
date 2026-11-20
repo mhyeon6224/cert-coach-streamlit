@@ -7,6 +7,7 @@ HTML에 넣는 값은 모두 escape 해서 넣는다.
 from __future__ import annotations
 
 import base64
+import re
 from html import escape
 from pathlib import Path
 
@@ -327,6 +328,21 @@ header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stToolb
 .cc-step .n {{ background: #fff; color: {INK}; border: 1px solid {LINE}; }}
 .cc-tile.main {{ border-left: 1px solid {LINE}; border-top: 2px solid {BLUE}; }}
 .cc-label {{ color: {MUTED}; letter-spacing: .3px; }}
+.cc-mat {{ border: 1px solid {LINE}; border-radius: {R}; background: #fff; margin: 8px 0; }}
+.cc-mat .top {{ display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid {LINE}; background: {SOFT}; }}
+.cc-mat .kind {{ font-size: 11.5px; font-weight: 700; color: {MUTED}; letter-spacing: .3px; min-width: 72px; }}
+.cc-mat .name {{ font-size: 15px; font-weight: 800; color: {INK}; flex: 1 1 240px; word-break: keep-all; }}
+.cc-mat .src a, .cc-src a {{ font-size: 12px; color: {SEA}; text-decoration: none; margin-left: 2px; }}
+.cc-mat .r {{ display: grid; grid-template-columns: 130px 1fr; gap: 10px; padding: 8px 14px; border-bottom: 1px dashed {LINE}; font-size: 13.5px; line-height: 1.6; }}
+.cc-mat .r:last-child {{ border-bottom: 0; }}
+.cc-mat .r .k {{ color: {MUTED}; }} .cc-mat .r .v {{ color: {INK}; }} .cc-mat .r .v a {{ color: {SEA}; }}
+.cc-mat .pc {{ display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid {LINE}; }}
+.cc-mat .pc > div {{ padding: 10px 14px; }} .cc-mat .pc > div + div {{ border-left: 1px solid {LINE}; }}
+.cc-mat .pc .h {{ font-size: 11.5px; font-weight: 700; color: {MUTED}; letter-spacing: .3px; margin-bottom: 4px; }}
+.cc-mat .pc ul {{ margin: 0; padding-left: 16px; font-size: 13.5px; line-height: 1.6; color: {INK}; }}
+.cc-table.wrap td {{ white-space: normal; line-height: 1.55; }}
+@media (max-width: 760px) {{ .cc-mat .r {{ grid-template-columns: 1fr; gap: 2px; }} .cc-mat .pc {{ grid-template-columns: 1fr; }}
+  .cc-mat .pc > div + div {{ border-left: 0; border-top: 1px solid {LINE}; }} }}
 </style>
 """
 
@@ -441,6 +457,45 @@ def pair_card(title: str, good: str, limit: str, good_head: str = "닿는 지점
         f'<div class="c good"><div class="h">{escape(good_head)}</div>{escape(good)}</div>'
         f'<div class="c limit"><div class="h">{escape(limit_head)}</div>{escape(limit)}</div></div></div>',
         unsafe_allow_html=True)
+
+
+def _md_links(text: str) -> str:
+    """글자는 그대로 두고 [이름](주소) 표기만 링크로 바꾼다."""
+    out, pos = "", 0
+    for m in re.finditer(r"\[([^\]]+)\]\((https?://[^\s)]+)\)", text or ""):
+        out += escape(text[pos:m.start()]) + f'<a href="{escape(m[2], quote=True)}" target="_blank" rel="noopener">{escape(m[1])}</a>'
+        pos = m.end()
+    return out + escape((text or "")[pos:])
+
+
+def _source_links(sources: list) -> str:
+    return " ".join(f'<a href="{escape(str(url), quote=True)}" target="_blank" rel="noopener">[{int(no)}]</a>' for no, url in sources or [])
+
+
+def material(item: dict) -> None:
+    """강의·교재 한 건을 카드로: 종류 · 이름 · 근거 링크 / 가격 등 표 / 장점·단점."""
+    rows = "".join(f'<div class="r"><span class="k">{escape(k)}</span><span class="v">{_md_links(v)}</span></div>' for k, v in item.get("rows") or [])
+    pair = ""
+    if item.get("pros") or item.get("cons"):
+        def bullets(values: list[str]) -> str:
+            return "".join(f"<li>{escape(v)}</li>" for v in values) or "<li>확인된 내용 없음</li>"
+        pair = (f'<div class="pc"><div><div class="h">장점</div><ul>{bullets(item.get("pros") or [])}</ul></div>'
+                f'<div><div class="h">단점·주의점</div><ul>{bullets(item.get("cons") or [])}</ul></div></div>')
+    st.markdown(f'<div class="cc-mat"><div class="top"><span class="kind">{escape(item["kind"])}</span>'
+                f'<span class="name">{escape(item["name"])}</span><span class="src">{_source_links(item.get("sources"))}</span></div>'
+                f'{rows}{pair}</div>', unsafe_allow_html=True)
+
+
+def link_cell(text: str, sources: list) -> str:
+    return f'{escape(text)} <span class="cc-src">{_source_links(sources)}</span>'
+
+
+def html_table(headers: list[str], rows: list[list[str]]) -> None:
+    """칸 내용을 이미 만든 HTML로 받는 표(링크가 들어가는 표에 쓴다)."""
+    head = "".join(f"<th>{escape(h)}</th>" for h in headers)
+    body = "".join("<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>" for row in rows)
+    st.markdown(f'<div class="cc-scroll"><table class="cc-table wrap"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>',
+                unsafe_allow_html=True)
 
 
 def outcomes(panels: list[tuple[str, list[str]]]) -> None:

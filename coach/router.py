@@ -347,7 +347,10 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
                              + "\n".join(f"{i}. {q}" for i, q in enumerate(questions, 1))
                              + "\n\n잘 모르겠으면 \"기본으로 추천해줘\"라고 말해 주세요. 그러면 '강의 무료·교재 구매' 기준으로 찾아요.")
         state.pop("pending_cert", None)
-        return prefix + engine.study_path(target_cert, profile, llm, search, today)
+        detail: dict = {}
+        text = engine.study_path(target_cert, profile, llm, search, today, detail)
+        state["study_path"] = {"cert": target_cert["name"], "at": today.isoformat(), "text": text, "detail": detail or None}
+        return prefix + text
 
     if intent == "decide":
         set_target(state, target_cert)

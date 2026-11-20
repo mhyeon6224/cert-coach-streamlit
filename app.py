@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+from html import escape
 
 from coach import engine, plan as planner
 from coach.catalog import BY_CODE, CATALOG, cert_from_item, find_cert
@@ -861,11 +862,40 @@ with tab_space:
             if st.button("강의·교재 찾기", type="primary", key="find_path"):
                 with st.spinner("강의·교재·기출 자료를 찾는 중이에요…"):
                     cert_for_path = BY_CODE.get(target["code"]) or target
-                    S["study_path"] = {"cert": target["name"], "at": today.isoformat(),
-                                       "text": engine.study_path(cert_for_path, P, llm, search, today)}
+                    _detail: dict = {}
+                    _text = engine.study_path(cert_for_path, P, llm, search, today, _detail)
+                    S["study_path"] = {"cert": target["name"], "at": today.isoformat(), "text": _text, "detail": _detail or None}
             found = S.get("study_path")
             if found and found.get("cert") == target["name"]:
-                st.markdown(found["text"])
+                _d = found.get("detail") or {}
+                if _d.get("cards"):
+                    # 구조화된 결과: 자료별 카드 → 예상 비용 표 → 선택 이유 → 대안 → 후기 표
+                    ui.label("기본 경로")
+                    for _card in _d["cards"]:
+                        ui.material(_card)
+                    ui.label("예상 비용 (확인된 가격만)")
+                    _cost_rows = [[c.split(" ", 1)[0] if not c.startswith("유료") else "유료 강의(선택)",
+                                   c.split(" ", 1)[1] if not c.startswith("유료") else c.replace("유료 강의를 고르면 ", "")] for c in _d.get("costs") or []]
+                    if _d.get("budget"):
+                        _cost_rows.append(["입력한 예산", _d["budget"]])
+                    ui.table(["항목", "금액"], _cost_rows)
+                    if _d.get("why"):
+                        ui.box(_d["why"], "blue", "이 경로를 고른 이유")
+                    if _d.get("alt"):
+                        ui.label("대안 경로")
+                        st.markdown(f'<div class="cc-box">{escape(_d["alt"]["text"])} '
+                                    f'<span class="cc-src">{ui._source_links(_d["alt"]["sources"])}</span></div>', unsafe_allow_html=True)
+                    ui.label("후기 근거")
+                    if _d.get("reviews"):
+                        ui.html_table(["구분", "의견", "확인"], [
+                            [escape(r["kind"]), ui.link_cell(r["text"], r["sources"]),
+                             ui.badges([("2곳 이상 반복", "good") if r["repeated"] else ("단일 의견 · 참고만", "warn")])]
+                            for r in sorted(_d["reviews"], key=lambda r: not r["repeated"])])
+                    else:
+                        st.caption("반복 확인된 후기가 없어 구성 기준으로만 판단했어요.")
+                    st.caption(f"사용한 정보: {_d.get('used', '')} · 확인 범위: {_d.get('scope', '')}")
+                else:
+                    st.markdown(found["text"])
                 st.caption(f"{found['at']} 기준 · 가격·무료 범위는 바뀔 수 있으니 구매 전에 원문을 확인해 주세요.")
             ui.label("기본 학습 순서")
             ui.table(["단계", "비중", "하는 일"], [
