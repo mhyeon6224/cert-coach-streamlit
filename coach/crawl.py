@@ -19,6 +19,12 @@ DATAQ_URL = "https://www.dataq.or.kr/www/accept/schedule.do"
 TOEIC_URL = "https://exam.toeic.co.kr/receipt/examSchList.php"
 KACPTA_URL = "https://license.kacpta.or.kr/web/info/info_diary.aspx"
 KACPTA_CODES = {"ACCOUNT_1", "TAX_2", "ADHOC_전산세무회계"}
+KOFIA_PAGE = "https://license.kofia.or.kr/examInfo/examYearly.do"
+KOFIA_API = "https://license.kofia.or.kr/examInfo/ajax/examYearlyMstInfo.do"
+KOFIA_LICENSES = {"투자자산운용사": "FWM006", "금융투자분석사": "FWR005", "재무위험관리사": "FWD003"}
+KBI_PAGE = "https://www.kbi.or.kr/platformWeb/Qual.do?cmd=openPage&pageName=qualTestScheduleList"
+KBI_API = "https://www.kbi.or.kr/platformWeb/Qual.do?cmd=qualTestScheduleList"
+KBI_NAMES = ["신용위험분석사", "신용분석사", "여신심사역", "국제금융역", "외환전문역", "자산관리사", "은행텔러"]
 DATAQ_SECTIONS = ["빅데이터 분석기사", "데이터분석 전문가", "데이터분석 준전문가", "SQL 전문가", "SQL 개발자",
                   "데이터아키텍처 전문가", "데이터아키텍처 준전문가"]
 DATAQ_NAMES = {"SQLD": "SQL 개발자", "SQLP": "SQL 전문가", "ADSP": "데이터분석 준전문가", "BIGDATA": "빅데이터 분석기사"}
@@ -103,12 +109,76 @@ def parse_kacpta(text: str) -> list[dict]:
     return [r for r in rows if r["exam_date"]]
 
 
+def _ymd(value: str) -> str | None:
+    digits = re.sub(r"\D", "", value or "")[:8]
+    try:
+        return date(int(digits[:4]), int(digits[4:6]), int(digits[6:8])).isoformat() if len(digits) == 8 else None
+    except ValueError:
+        return None
+
+
+def fetch_kofia(license_code: str) -> dict:
+    """금융투자협회 자격시험센터 연간 일정(사이트가 화면에 쓰는 일정 데이터를 그대로 받는다)."""
+    response = requests.post(KOFIA_API, data={"rcptSttType": "ALL", "licenseCd": license_code}, timeout=15,
+                             headers={**HEADERS, "X-Requested-With": "XMLHttpRequest", "Referer": KOFIA_PAGE})
+    response.raise_for_status()
+    rows = []
+    for item in response.json().get("examSchedList") or []:
+        exam = _ymd(str(item.get("examinationDt") or ""))
+        if not exam:
+            continue
+        rows.append({"round": f"{exam[:4]}년 제{item.get('timeCnt')}회", "reg_start": _ymd(str(item.get("receiptSrtDtTm") or "")),
+                     "reg_end": _ymd(str(item.get("receiptEndDtTm") or "")), "exam_date": exam,
+                     "result_date": _ymd(str(item.get("successAnnDt") or "")), "source_url": KOFIA_PAGE})
+    return {"rounds": rows}
+
+
+def fetch_kbi(name: str, years: list[int]) -> dict:
+    """한국금융연수원 자격시험 일정(응시료 포함). 올해와 내년 일정을 함께 본다."""
+    rows, fee = [], None
+    for year in years:
+        response = requests.post(KBI_API, timeout=15, headers={**HEADERS, "X-Requested-With": "XMLHttpRequest", "Referer": KBI_PAGE},
+                                 data={"l_pageno": 1, "l_listscale": 100, "p_sortorder": "QUAL_TYPE, D_YY, I_QLFN, Q_NUM",
+                                       "p_dYy": str(year), "p_qualType": "", "p_nQlfn": ""})
+        response.raise_for_status()
+        for item in response.json().get("ds") or []:
+            if re.sub(r"\s", "", str(item.get("N_QLFN") or "")).split("(")[0] != name:
+                continue
+            def md(text: str) -> str | None:
+                m = re.search(r"(\d{1,2})\.(\d{1,2})", text or "")
+                return _md(year, f"{m[1]}.{m[2]}") if m else None
+            period = str(item.get("D_INT_ACPT_DT") or "").split("~")
+            exam = md(str(item.get("D_OF_APPR") or ""))
+            if not exam:
+                continue
+            rows.append({"round": f"{year}년 제{item.get('Q_SEQ')}회", "reg_start": md(period[0]),
+                         "reg_end": md(period[1]) if len(period) > 1 else None, "exam_date": exam,
+                         "result_date": md(str(item.get("D_SUCC_ANNO") or "")), "source_url": KBI_PAGE})
+            if item.get("SUM_W_APP_EXAM"):
+                fee = f"{item['SUM_W_APP_EXAM']}원"
+    return {"rounds": rows, "fee": fee}
+
+
 def crawl_official(cert: dict) -> dict | None:
     """직접 읽을 수 있는 사이트면 {"rounds", "url", "title"}을, 대상이 아니면 None을 돌려준다.
 
     네트워크·구조 오류는 {"rounds": [], "error": ...}로 돌려 호출부가 '못 함'으로 표시하게 한다.
     """
-    code = cert.get("code")
+    code, name = cert.get("code"), re.sub(r"\s", "", cert.get("name") or "")
+    fetcher = None
+    kbi_name = next((n for n in KBI_NAMES if n in name), None)
+    if name in KOFIA_LICENSES:
+        url, title, fetcher = KOFIA_PAGE, "금융투자협회 자격시험 연간 일정", lambda: fetch_kofia(KOFIA_LICENSES[name])
+    elif kbi_name:
+        year = date.today().year
+        url, title, fetcher = KBI_PAGE, "한국금융연수원 자격시험 일정", lambda: fetch_kbi(kbi_name, [year, year + 1])
+    if fetcher:
+        try:
+            got = fetcher()
+        except Exception as error:
+            return {"rounds": [], "url": url, "title": title, "error": type(error).__name__}
+        return {"rounds": got["rounds"], "url": url, "title": title, "fee": got.get("fee"),
+                "error": None if got["rounds"] else "일정 데이터를 읽지 못함"}
     if code in DATAQ_NAMES:
         url, title, parser = DATAQ_URL, "데이터자격시험 연간 일정표", lambda t: parse_dataq(t, DATAQ_NAMES[code])
     elif code in KACPTA_CODES:

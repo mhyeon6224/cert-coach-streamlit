@@ -193,8 +193,10 @@ def notion_sync(token: str, link: str, today_value, hours: float, active: bool) 
     plan, lines = S["plan"], []
     blocks = notion.read_blocks(token, link)
     pulled = notion.pull_checks(blocks, plan)
-    if any(done for _, done in pulled["changed"]):
-        planner.mark_progress(plan, today_value)
+    for week, done in pulled["changed"]:  # Notion에서 바뀐 체크는 동기화한 날짜를 완료일로 적는다
+        row = next(r for r in plan["rows"] if r["week"] == week)
+        row["done"] = not done
+        planner.set_done(plan, row, done, today_value)
     if not pulled["found"]:
         raise notion.NotionError("그 페이지에서 주차별 계획 체크박스를 찾지 못했어요. 앱이 만든 'OOO 학습 공간' 페이지의 링크를 넣어 주세요. "
                                  "(그 페이지를 넣어 둔 상위 페이지 링크가 아니에요.)")
@@ -459,6 +461,15 @@ with st.container(key="topbar"):
 _plan = S.get("plan")
 _hours = float(P["weekly_hours"] or (_plan or {}).get("weekly_hours") or 0)
 _info = planner.checkin(_plan, today, _hours or 1, int(P["study_days"] or 5), target) if _plan else None
+if _info and _info["suggest_shrink"] and target.get("state") in ("준비중", "접수완료") \
+        and _plan.get("idle_notified") != today.isoformat():
+    _plan["idle_notified"] = today.isoformat()
+    _text = (f"{target.get('name', '')} 계획에 {_info['idle_days']}일째 완료 체크가 없어요. "
+             "계획이 버겁다면 채팅에서 \"계획 줄여줘\"라고 말해 주세요.")
+    S.setdefault("notices", []).insert(0, {"at": datetime.now(timezone(timedelta(hours=9))).strftime("%m-%d %H:%M"), "text": _text})
+    del S["notices"][30:]
+    st.session_state["unread"] = st.session_state.get("unread", 0) + 1
+    st.toast("알림: " + _text[:80])
 _exam = target.get("exam_date")
 
 
@@ -764,18 +775,19 @@ with tab_space, st.container(border=True, key="card7"):
             else:
                 st.info(f"'{target['state']}' 상태라 체크인을 멈췄어요. 결과가 나오면 위 버튼이나 대화로 알려 주세요.")
             st.progress(info["percent"] / 100, text="단계별 완료율 — " + " · ".join(f"{k} {v}%" for k, v in info["by_phase"].items()))
-            frame = pd.DataFrame(plan["rows"])
+            for _row in plan["rows"]:
+                _row.setdefault("done_at", "")
+            frame = pd.DataFrame(plan["rows"])[["week", "phase", "start", "end", "hours", "task", "done", "done_at", "memo"]]
             edited = st.data_editor(
-                frame, hide_index=True, use_container_width=True, disabled=["week", "phase", "start", "end", "hours", "task"],
+                frame, hide_index=True, use_container_width=True, disabled=["week", "phase", "start", "end", "hours", "task", "done_at"],
                 column_config={"week": "주차", "phase": "단계", "start": "시작", "end": "마감",
                                "hours": st.column_config.NumberColumn("예상 시간", format="%.1f h"), "task": "할 일",
-                               "done": st.column_config.CheckboxColumn("완료"), "memo": "메모"}, key="plan_editor")
+                               "done": st.column_config.CheckboxColumn("완료"), "done_at": "완료일", "memo": "메모"}, key="plan_editor")
             new_rows = edited.to_dict("records")
             if [(r["done"], r["memo"]) for r in new_rows] != [(r["done"], r["memo"]) for r in plan["rows"]]:
-                if any(bool(new["done"]) and not row["done"] for row, new in zip(plan["rows"], new_rows)):
-                    planner.mark_progress(plan, today)  # 완료 체크가 새로 생긴 날 기록
                 for row, new in zip(plan["rows"], new_rows):
-                    row["done"], row["memo"] = bool(new["done"]), str(new["memo"] or "")
+                    planner.set_done(plan, row, bool(new["done"]), today)  # 완료일과 마지막 체크 날짜도 함께 기록
+                    row["memo"] = str(new["memo"] or "")
                 st.rerun()
             c1, c2, c3 = st.columns(3)
             if c1.button("남은 기간으로 재조정", disabled=not active, use_container_width=True):
@@ -891,9 +903,9 @@ with tab_profile:
             st.session_state["flash"] = ("주당 시간이 바뀌었어요. '계획' 탭에서 재조정할 수 있어요."
                                          if S.get("plan") and hours and hours != old_hours else "프로필을 저장했어요.")
             st.rerun()
-    if P.get("exam_history"):
-        with st.container(border=True, key="card14"):
-            ui.section("시험 이력", "합격·불합격을 알려 주면 여기에 쌓이고, 다음 추천에 반영돼요")
+    with st.container(border=True, key="card14"):
+        ui.section("시험 이력", "합격·불합격을 알려 주면 여기에 쌓이고, 다음 추천에 반영돼요")
+        if P.get("exam_history"):
             ui.table(["자격증", "결과", "날짜", "가장 부족했던 단계"],
                      [[h.get("cert", ""), (h.get("result", ""), "good" if h.get("result") == "합격" else "warn"), h.get("date", ""),
                        f"{h['weak_phase']} (완료율 {h['weak_percent']}%)" if h.get("weak_phase") else "기록 없음"]
@@ -901,6 +913,8 @@ with tab_profile:
             if st.button("시험 이력 지우기", key="clear_history"):
                 P["exam_history"] = []
                 st.rerun()
+        else:
+            st.caption("아직 기록이 없어요. 대화에서 \"SQLD 합격했어\" / \"불합격했어\"라고 말하거나 '기능' 탭의 버튼을 누르면 기록돼요.")
     with st.container(border=True, key="card9"):
         ui.section("저장 상태", "")
         ui.table(["항목", "상태"], [
@@ -912,12 +926,19 @@ with tab_profile:
 # ------------------------------------------------------------------ 기능
 with tab_more:
     with st.container(border=True, key="card10"):
-        ui.section("취득 후 다음 경로", "결과를 알려 주면 다음 단계로 이어 줘요")
-        ui.box("보유 자격증에 추가하고, 상태를 합격으로 바꾼 뒤 다음 자격증을 제안해요.", "green", "합격")
-        ui.box("완료율이 가장 낮았던 단계를 알려 주고, 다음 회차 공식 일정을 확인한 뒤 그 단계 비중을 올린 계획을 제안해요.", "red", "불합격")
+        ui.section("시험 결과 반영", (f"현재 목표: {target['name']} · {target.get('state', '준비중')}" if target.get("code")
+                                       else "목표 자격증을 정하면 결과를 알릴 수 있어요"))
         r1, r2 = st.columns(2)
-        r1.button("합격했어요", use_container_width=True, key="more_pass", on_click=queue, args=("합격했어",), disabled=not target.get("code"))
-        r2.button("불합격했어요", use_container_width=True, key="more_fail", on_click=queue, args=("불합격했어",), disabled=not target.get("code"))
+        with r1:
+            ui.outcome("합격했다면", ["보유 자격증에 추가할지 물어봐요", "상태를 '합격'으로 바꾸고 시험 이력에 남겨요",
+                                   "이어서 준비할 다음 자격증을 제안해요"], "pass")
+            st.button("합격했어요", use_container_width=True, key="more_pass", on_click=queue, args=("합격했어",),
+                      disabled=not target.get("code"))
+        with r2:
+            ui.outcome("불합격했다면", ["완료율이 가장 낮았던 단계를 사실대로 알려 줘요", "시험 이력에 남겨 다음 추천에 반영해요",
+                                    "다음 회차 일정 확인 뒤 그 단계 비중을 올린 계획을 제안해요"])
+            st.button("불합격했어요", use_container_width=True, key="more_fail", on_click=queue, args=("불합격했어",),
+                      disabled=not target.get("code"))
     with st.container(border=True, key="card11"):
         ui.section("보유 자격증·유효기간 관리", "이미 보유한 자격증은 다시 추천하지 않아요")
         if P["owned"]:

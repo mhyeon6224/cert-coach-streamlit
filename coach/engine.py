@@ -292,7 +292,11 @@ def lookup_schedule(cert: dict, llm: LLM | None, search: Search | None, today: d
         else:
             result["confirmed"].append("공식 일정 페이지를 직접 읽었어요.")
             result["need_check"].append("페이지에 올라온 회차는 모두 지났어요 — 다음 연도 일정은 공식 일정 미발표 상태예요.")
-        result["need_check"].append("응시료는 미확인 — 공식 접수 페이지에서 확인해 주세요.")
+        if crawled.get("fee"):
+            result["fee"] = {"text": crawled["fee"], "source_id": 0}
+            result["confirmed"].append("응시료도 같은 공식 일정표에서 읽었어요.")
+        else:
+            result["need_check"].append("응시료는 미확인 — 공식 접수 페이지에서 확인해 주세요.")
         return result
     if crawled and crawled.get("error"):
         result["failed"].append(f"공식 일정 페이지를 직접 읽지 못했어요({crawled['error']}). 검색으로 다시 확인해요.")
@@ -415,6 +419,7 @@ PATH_PROMPT = """너는 자격증 학습자료 선별자다. {untrusted}
 [검색 결과]에 근거해 {name} 학습 경로를 만든다. 검색 결과에 없는 강의·교재 이름, 가격, 평점은 만들지 않는다.
 아래 JSON만 출력한다. 모든 항목의 source_ids는 [검색 결과]의 source_id 배열이다(근거가 없으면 항목을 null로).
 {{"basic": {{"lecture": {{"text": "강의 이름과 어디서 보는지", "coverage": "<전체/일부/미확인 중 하나와 짧은 근거>", "free_scope": "<어디까지 무료인지. 근거가 없으면 미확인>", "price": "<무료 / 검색 결과에 적힌 가격 그대로 / 가격 확인 필요>", "source_ids": [0]}},
+            "paid_lecture": {{"text": "<비용 선호가 '유료 강의 허용'·'시간 절약 우선'일 때만: 유료 강의 후보 1개의 이름과 제공처. 아니면 null>", "price": "<검색 결과에 적힌 수강료 그대로 / 가격 확인 필요>", "why_pay": "<무료 강의 대신 돈을 낼 만한 이유를 사용자 조건과 연결해 1문장. 근거가 약하면 그렇게 쓴다>", "source_ids": [0]}},
             "past_exam": {{"text": "기출·자료와 공식 여부", "source_ids": [0]}},
             "book": {{"text": "1순위 교재 1권의 이름(출판사)", "price": "<검색 결과에 적힌 가격 그대로 / 가격 확인 필요>", "fit": "<어떤 학습자에게 맞는지 사용자 조건과 연결해 1문장>", "pros": ["<검색 결과에서 확인된 장점>"], "cons": ["<검색 결과에서 확인된 단점·주의점>"], "source_ids": [0]}},
             "book_alt": {{"text": "대안 교재 1권의 이름(출판사)", "price": "<위와 같음>", "fit": "<어떤 경우에 1순위 대신 이 책을 고르는지 1문장>", "pros": ["<확인된 장점>"], "cons": ["<확인된 단점·주의점>"], "source_ids": [0]}},
@@ -423,6 +428,7 @@ PATH_PROMPT = """너는 자격증 학습자료 선별자다. {untrusted}
   "pros": [{{"text": "후기에서 보인 장점", "source_ids": [0, 1]}}],
   "cons": [{{"text": "후기에서 보인 단점", "source_ids": [0]}}]}}
 규칙:
+- paid_lecture에는 수강료를 내고 듣는 인터넷 강의(인강·패스)만 넣는다. 교재, 무료 유튜브 강의, 교재에 딸린 무료 강의는 넣지 않는다. 검색 결과에 그런 강의가 없으면 null로 둔다.
 - 교재는 1순위 1권과 대안 1권만 고른다. 교재의 장점·단점은 검색 결과(후기·서점 설명)에 실제로 적힌 내용만 쓰고, 좋은 점만 쓰지 않는다. 확인된 단점이 없으면 cons를 빈 배열로 둔다. 광고 문구나 평점 숫자를 지어내지 않는다.
 - 가격은 검색 결과에 숫자로 적혀 있을 때만 쓴다. 없으면 '가격 확인 필요'라고 쓴다. 사용자 예산이 있으면 그 안에서 고르고, 넘으면 why에 그 사실을 적는다.
 - '기타 사항'·'시험 이력'이 있으면 자료 선택에 반영한다(예: 불합격 때 약했던 단계를 보완하는 자료).
@@ -462,7 +468,7 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
     if cost != "완전 무료":
         queries.append((f"{cert['name']} 교재 비교 장단점 가격", None))
     if cost in ("유료 강의 허용", "시간 절약 우선"):
-        queries.append((f"{cert['name']} 인강 수강료 가격 후기", None))
+        queries.append((f"{cert['name']} 유료 인강 추천 수강료 환급 패스 비교", None))
     if cert.get("domain"):
         queries.append((f"{cert['name']} 기출문제 공개", [cert["domain"]]))
     hits, seen, failed = [], set(), 0
@@ -531,6 +537,40 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
     def facts(values) -> list[str]:
         return [str(v).strip() for v in values or [] if isinstance(v, str) and v.strip() and not v.strip().startswith("<")][:3]
 
+    def lookup_price(title: str, low: int, high: int) -> tuple[str, str] | None:
+        """가격이 본문에 없을 때 제목으로 한 번 더 검색해, 그 자료 이름이 함께 나온 글의 가격만 쓴다."""
+        clean = re.sub(r"[\(\[].*?[\)\]]", " ", title).strip()
+        words = [w for w in re.split(r"\s+", clean) if len(w) >= 2][:3]
+        if len(words) < 2:
+            return None
+        try:
+            found = search.search(f"{clean} 정가 가격", max_results=4)
+        except SearchError:
+            return None
+        counts: dict[int, list] = {}
+        for hit in found:
+            body = hit["title"] + " " + hit["content"]
+            if not all(w in body for w in words[:2]):
+                continue
+            for m in re.finditer(r"(\d{1,3}(?:,\d{3})+)\s*원", body):
+                value = int(m[1].replace(",", ""))
+                if low <= value <= high:
+                    counts.setdefault(value, []).append(hit["url"])
+        if not counts:
+            return None
+        value = max(counts, key=lambda v: (len(counts[v]), v))
+        return f"{value:,}원", counts[value][0]
+
+    def priced(item, ids: list[int], title: str, low: int, high: int) -> str:
+        text = price_of(item, ids)
+        first = re.search(r"\d[\d,]*", text)
+        if first and not low <= int(first[0].replace(",", "") or 0) <= high:
+            text = "가격 확인 필요"  # 교재값·수강료로 보기 어려운 숫자(다른 상품 가격일 수 있음)는 쓰지 않는다
+        if text != "가격 확인 필요":
+            return text
+        found = lookup_price(title, low, high)
+        return f"{found[0]} (검색 기준 · [출처]({found[1]}) · 판매처에서 다시 확인)" if found else text
+
     costs = []
     if lecture:
         lecture_price = price_of(basic["lecture"], lecture[1])
@@ -539,6 +579,18 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
                      f" / 무료 범위·유료 전환: {known(basic['lecture'].get('free_scope'))} / 확인 방식: 검색 원문 요약, {today.isoformat()}")
     else:
         lines.append("- 강의: 후보 미확인 — 근거가 확인된 강의를 찾지 못했어요.")
+    paid = cite(basic.get("paid_lecture")) if cost in ("유료 강의 허용", "시간 절약 우선") else None
+    if paid and re.search(r"무료|교재|유튜브", paid[0]):  # 유료 인강이 아닌 것이 들어오면 후보로 쓰지 않는다
+        paid = None
+    if paid:
+        paid_price = priced(basic["paid_lecture"], paid[1], paid[0], 10000, 1500000)
+        why_pay = known(basic["paid_lecture"].get("why_pay"))
+        costs.append(f"유료 강의를 고르면 {paid_price.split(' (')[0]}")
+        lines.append(f"- 유료 강의 후보: {paid[0]} {refs(paid[1])}\n  - 수강료: {paid_price}"
+                     + (f"\n  - 돈을 낼 만한 이유: {why_pay}" if why_pay != "미확인" else "")
+                     + "\n  - 위 무료 강의로 시작해 보고, 부족하면 이 강의를 고려하는 순서를 권해요.")
+    elif cost in ("유료 강의 허용", "시간 절약 우선"):
+        lines.append("- 유료 강의 후보: 미확인 — 검색한 글에서는 근거가 확인된 유료 강의를 찾지 못했어요.")
     item = cite(basic.get("past_exam"))
     if item and cost == "완전 무료" and PAID_WORDS.search(item[0]):
         item = None
@@ -553,9 +605,9 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
             if not item:
                 lines.append(f"- {label}: 미확인 — 근거가 확인된 교재를 찾지 못했어요.")
                 continue
-            book_price = price_of(source, item[1])
+            book_price = priced(source, item[1], item[0], 8000, 60000)
             if key == "book":
-                costs.append(f"교재 {book_price}")
+                costs.append(f"교재 {book_price.split(' (')[0]}")
             pros, cons = facts(source.get("pros")), facts(source.get("cons"))
             lines.append(
                 f"- {label}: {item[0]} {refs(item[1])}\n  - 가격: {book_price}"

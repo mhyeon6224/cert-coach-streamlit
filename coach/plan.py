@@ -67,13 +67,13 @@ def build_plan(today: date, exam_date: date, weekly_hours: float, style: str = "
             span = (end - start).days + 1
             rows.append({
                 "week": i + 1, "phase": phase, "start": start.isoformat(), "end": end.isoformat(),
-                "hours": _half(weekly_hours * span / 7), "task": TASKS[phase], "done": False, "memo": "",
+                "hours": _half(weekly_hours * span / 7), "task": TASKS[phase], "done": False, "done_at": "", "memo": "",
             })
     last_day = max(review_start, exam_date - timedelta(days=1))
     rows.append({
         "week": len(rows) + 1, "phase": "직전 복습", "start": review_start.isoformat(), "end": last_day.isoformat(),
         "hours": _half(weekly_hours * min(REVIEW_DAYS, max(1, days_left)) / 7), "task": TASKS["직전 복습"],
-        "done": False, "memo": "",
+        "done": False, "done_at": "", "memo": "",
     })
     return {
         "rows": rows, "created": today.isoformat(), "last_progress": today.isoformat(), "exam_date": exam_date.isoformat(),
@@ -203,6 +203,17 @@ def mark_progress(plan: dict, today: date) -> None:
     plan["last_progress"] = d(today).isoformat()
 
 
+def set_done(plan: dict, row: dict, done: bool, today: date) -> None:
+    """완료 여부를 바꾸면서 완료일도 함께 적는다(체크를 풀면 완료일을 지운다)."""
+    done = bool(done)
+    if done and not row.get("done"):
+        row["done_at"] = d(today).isoformat()
+        mark_progress(plan, today)
+    elif not done:
+        row["done_at"] = ""
+    row["done"] = done
+
+
 def weakest_phase(plan: dict) -> tuple[str, int] | None:
     """불합격 반영: 완료율이 가장 낮았던 단계를 사실로만 돌려준다."""
     by_phase = {p: v for p, v in progress(plan)["by_phase"].items() if p in PHASES}
@@ -284,7 +295,7 @@ def space_markdown(state: dict, info: dict | None) -> str:
         stats = progress(plan)
         out += ["## 📊 진행률", f"- 전체 {stats['percent']}% / 단계별: " + ", ".join(f"{k} {v}%" for k, v in stats["by_phase"].items())]
         out += [f"- 재조정 이력: {'; '.join(plan['history']) or '없음'}", "", "## 📅 주차별 계획", "",
-                "| 주차 | 단계 | 기간 | 예상 시간 | 할 일 | 완료 | 메모 |", "| --- | --- | --- | --- | --- | --- | --- |"]
+                "| 주차 | 단계 | 기간 | 예상 시간 | 할 일 | 완료 | 완료일 | 메모 |", "| --- | --- | --- | --- | --- | --- | --- | --- |"]
         for r in plan["rows"]:
-            out.append(f"| {r['week']} | {r['phase']} | {r['start']} ~ {r['end']} | {r['hours']:g}h | {r['task']} | {'✅' if r['done'] else '⬜'} | {r['memo']} |")
+            out.append(f"| {r['week']} | {r['phase']} | {r['start']} ~ {r['end']} | {r['hours']:g}h | {r['task']} | {'✅' if r['done'] else '⬜'} | {r.get('done_at') or ''} | {r['memo']} |")
     return "\n".join(out) + "\n"

@@ -304,6 +304,13 @@ header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stToolb
 .cc-pair .c .h {{ font-size: 12px; font-weight: 700; margin-bottom: 3px; }}
 .cc-pair .c.good .h {{ color: #1f8a4c; }} .cc-pair .c.limit .h {{ color: #b7791f; }}
 @media (max-width: 760px) {{ .cc-pair .g {{ grid-template-columns: 1fr; }} .cc-pair .c.limit {{ border-left: 0; border-top: 1px solid {LINE}; }} }}
+.cc-out {{ border: 1px solid {LINE}; border-top: 2px solid {LINE}; border-radius: {R}; background: #fff; padding: 14px 16px 10px; min-height: 172px; }}
+.cc-out.pass {{ border-top-color: {BLUE}; }}
+.cc-out .t {{ font-size: 15px; font-weight: 800; color: {INK}; margin-bottom: 8px; }}
+.cc-out ol {{ margin: 0; padding: 0; list-style: none; counter-reset: out; }}
+.cc-out li {{ counter-increment: out; position: relative; padding: 5px 0 5px 26px; font-size: 13.5px; line-height: 1.55; color: {MUTED}; border-top: 1px dashed {LINE}; }}
+.cc-out li:first-child {{ border-top: 0; }}
+.cc-out li::before {{ content: counter(out); position: absolute; left: 0; top: 6px; width: 17px; height: 17px; border: 1px solid {LINE}; border-radius: {R}; font-size: 11px; font-weight: 700; color: {INK}; display: flex; align-items: center; justify-content: center; }}
 </style>
 """
 
@@ -418,6 +425,12 @@ def pair_card(title: str, good: str, limit: str, good_head: str = "닿는 지점
         f'<div class="c good"><div class="h">{escape(good_head)}</div>{escape(good)}</div>'
         f'<div class="c limit"><div class="h">{escape(limit_head)}</div>{escape(limit)}</div></div></div>',
         unsafe_allow_html=True)
+
+
+def outcome(title: str, steps_: list[str], tone: str = "") -> None:
+    """결과(합격/불합격)를 알렸을 때 일어나는 일을 순서대로 보여 주는 조용한 패널."""
+    rows = "".join(f"<li>{escape(s)}</li>" for s in steps_)
+    st.markdown(f'<div class="cc-out {tone}"><div class="t">{escape(title)}</div><ol>{rows}</ol></div>', unsafe_allow_html=True)
 
 
 def kv(pairs: list[tuple[str, str]]) -> None:

@@ -97,6 +97,8 @@ def build_blocks(state: dict, info: dict | None) -> list[dict]:
                    _heading("📅 주차별 계획")]
         for row in plan["rows"]:
             label = f"{row['week']}주차 · {row['phase']} ({row['start']} ~ {row['end']}, {row['hours']:g}h) — {row['task']}"
+            if row.get("done") and row.get("done_at"):
+                label += f" · 완료 {row['done_at']}"
             if row.get("memo"):
                 label += f"  [{row['memo']}]"
             blocks.append(_block("to_do", _text(label), checked=bool(row["done"])))
