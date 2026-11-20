@@ -6,7 +6,9 @@ HTML에 넣는 값은 모두 escape 해서 넣는다.
 """
 from __future__ import annotations
 
+import base64
 from html import escape
+from pathlib import Path
 
 import streamlit as st
 
@@ -251,6 +253,22 @@ div[role="dialog"] {{ border: 1px solid {LINE}; box-shadow: 0 12px 32px rgba(12,
 [data-testid="stChatMessageContent"] {{ margin: 0 !important; }}
 /* Streamlit 기본 도구 모음(Deploy 등)은 숨겨 상단바와 겹치지 않게 한다 */
 [data-testid="stAppDeployButton"], [data-testid="stMainMenu"], [data-testid="stToolbarActions"], [data-testid="stStatusWidget"] {{ display: none !important; }}
+
+/* ================= 상단바 정리 · 배너 ================= */
+.cc-brand {{ flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }}
+.cc-mark {{ width: 32px; height: 32px; border-radius: 50%; border: 1px solid {LINE}; background: #fff; object-fit: cover; }}
+img.cc-avatar {{ object-fit: cover; background: #fff; border: 1px solid {LINE}; }}
+.cc-page {{ color: {INK}; font-weight: 700; }}
+[class*="st-key-topbar"] {{ padding: 8px 0 !important; }}
+.cc-greet {{ display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }}
+.cc-greet .cc-pills {{ margin: 0; }}
+[class*="st-key-banner"] {{ background: #fff; border: 1px solid {LINE}; border-radius: {R}; padding: 6px 0; margin-top: 8px; }}
+[class*="st-key-banner"] [data-testid="stImage"], [class*="st-key-banner"] [data-testid="stImageContainer"] {{ width: 100% !important; display: flex; justify-content: center; }}
+[class*="st-key-banner"] img {{ max-height: 150px; width: auto !important; max-width: 100%; object-fit: contain; }}
+[class*="st-key-banner"] [data-testid="stElementToolbar"] {{ display: none; }}
+/* 대화: 달달이 얼굴 아이콘 */
+[data-testid="stChatMessage"] > img, [data-testid="stChatMessage"] [data-testid^="stChatMessageAvatar"] img {{ display: block !important; width: 32px; height: 32px;
+  border-radius: 50%; border: 1px solid {LINE}; background: #fff; object-fit: cover; flex: none; }}
 </style>
 """
 
@@ -259,26 +277,36 @@ def inject() -> None:
     st.markdown(CSS, unsafe_allow_html=True)
 
 
-MARK = ('<svg class="cc-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="6" fill="#123a6b"/>'
-        '<path d="M9 16.5l4.5 4.5L23 11.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>')
-CHAT_ICON = ('<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#fff" d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-4.3 3.4A.5.5 0 0 1 4 20V17a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/></svg>')
+ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 
-def brand_html(pills: list[tuple[str, bool]], page: str = "대시보드") -> str:
-    """상단바 왼쪽: 로고 + 서비스 이름 / 현재 화면, 그 옆 상태 칩."""
-    pill_html = "".join(f'<span class="cc-pill{" on" if on else ""}">{escape(label)}</span>' for label, on in pills)
+def _data_uri(name: str) -> str:
+    try:
+        return "data:image/png;base64," + base64.b64encode((ASSETS / name).read_bytes()).decode()
+    except OSError:
+        return ""
+
+
+FACE = _data_uri("dalda.png")
+MARK = f'<img class="cc-mark" src="{FACE}" alt="">' if FACE else '<span class="cc-mark"></span>'
+
+
+def brand_html(page: str = "달달이") -> str:
+    """상단바 왼쪽: 마스코트 + 서비스 이름 / 코치 이름."""
     return (f'<div class="cc-brand">{MARK}<span class="cc-name">자격증 패스 코치</span><span class="cc-slash">/</span>'
-            f'<span class="cc-page">{escape(page)}</span><span class="cc-pills">{pill_html}</span></div>')
+            f'<span class="cc-page">{escape(page)}</span></div>')
 
 
 def header(pills: list[tuple[str, bool]], today: str, user: str | None) -> None:
     """위젯 없는 상단바 (입장 화면용)."""
-    st.markdown(f'<div class="cc-header">{brand_html(pills, "입장")}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="cc-header">{brand_html()}</div>', unsafe_allow_html=True)
 
 
-def greeting(user: str | None, line: str) -> None:
+def greeting(user: str | None, line: str, pills: list[tuple[str, bool]] | None = None) -> None:
     name = f"{escape(user)}님" if user else "방문자님"
-    st.markdown(f'<div class="cc-greet"><h1>안녕하세요, {name}</h1><p>{escape(line)}</p></div>', unsafe_allow_html=True)
+    pill_html = "".join(f'<span class="cc-pill{" on" if on else ""}">{escape(label)}</span>' for label, on in pills or [])
+    st.markdown(f'<div class="cc-greet"><div><h1>안녕하세요, {name}</h1><p>{escape(line)}</p></div>'
+                f'<div class="cc-pills">{pill_html}</div></div>', unsafe_allow_html=True)
 
 
 def profile_card(user: str | None, note: str) -> None:
@@ -289,8 +317,9 @@ def profile_card(user: str | None, note: str) -> None:
 
 def coach_head(online: bool) -> None:
     badge = '<span class="cc-online">AI 연결됨</span>' if online else '<span class="cc-online off">규칙 기반</span>'
-    st.markdown(f'<div class="cc-coach"><div class="cc-avatar">{CHAT_ICON}</div><div><div class="t">상담</div>'
-                f'<div class="s">추천 · 일정 · 학습 경로 · 진도 관리</div></div>{badge}</div>', unsafe_allow_html=True)
+    face = f'<img class="cc-avatar" src="{FACE}" alt="">' if FACE else '<div class="cc-avatar"></div>'
+    st.markdown(f'<div class="cc-coach">{face}<div><div class="t">달달이</div>'
+                f'<div class="s">자격증 코치 · 추천 · 일정 · 학습 경로 · 진도 관리</div></div>{badge}</div>', unsafe_allow_html=True)
 
 
 def tiles(items: list[tuple[str, str, str]]) -> None:

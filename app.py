@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import json
 from datetime import date, timedelta
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -58,12 +59,15 @@ def google_callback() -> None:
 google_callback()
 
 GREETING = (
-    "안녕하세요, **자격증 패스 코치**예요.\n\n"
+    "안녕하세요, 자격증 코치 **달달이**예요.\n\n"
     "무엇을 딸지, 언제 접수하는지, 무엇으로 공부할지, 계획을 어떻게 지킬지를 하나의 흐름으로 이어 드려요. "
     "궁금한 단계부터 말해 주세요. 결과는 오른쪽 대시보드에 카드와 표로 정리돼요.\n\n"
     "일정·응시료는 공식 사이트에서 확인된 것만 보여 주고, 확인하지 못한 값은 **미확인**으로 남겨요."
 )
-AVATAR = {"assistant": ":material/school:", "user": ":material/person:"}
+ASSETS = Path(__file__).resolve().parent / "assets"
+BANNER = ASSETS / "banner.png"
+AVATAR = {"assistant": str(ASSETS / "dalda.png") if (ASSETS / "dalda.png").exists() else ":material/school:",
+          "user": ":material/person:"}
 EXAMPLES = ["데이터 분석 직무에 맞는 자격증 추천해줘", "1순위 시험 일정 알려줘", "1순위로 준비할래",
             "학습 계획 세워줘", "오늘 뭐 공부해?", "합격했어"]
 
@@ -249,8 +253,7 @@ P = S["profile"]
 auth = st.session_state.get("auth")
 with st.container(key="topbar"):
     bar_left, bar_right = st.columns([4.2, 1], vertical_alignment="center")
-    bar_left.markdown(ui.brand_html([("AI 추천" if llm else "규칙 기반 추천", bool(llm)), ("웹 검색" if search else "공식 페이지 직접 수집", bool(search)),
-                                     ("클라우드 저장" if store.durable else "임시 저장", store.durable)]), unsafe_allow_html=True)
+    bar_left.markdown(ui.brand_html(), unsafe_allow_html=True)
     with bar_right.popover(auth["nickname"] if auth else "로그인", icon=":material/account_circle:", use_container_width=True):
         account_panel()
 if st.session_state.get("flash"):
@@ -273,8 +276,13 @@ elif target.get("name"):
     _line = f"목표 {target['name']} · 시험일 미확인"
 else:
     _line = "아직 목표 자격증이 없어요. 대화나 추천 탭에서 시작해 보세요."
+if BANNER.exists():
+    with st.container(key="banner"):
+        st.image(str(BANNER))
 ui.greeting(auth["nickname"] if auth else None,
-            f"오늘 {today.isoformat()} · {_line}" + ("" if auth else " · 로그인 전이라 창을 닫으면 내용이 사라져요"))
+            f"오늘 {today.isoformat()} · {_line}" + ("" if auth else " · 로그인 전이라 창을 닫으면 내용이 사라져요"),
+            [("AI 추천" if llm else "규칙 기반 추천", bool(llm)), ("웹 검색" if search else "공식 페이지 직접 수집", bool(search)),
+             ("클라우드 저장" if store.durable else "임시 저장", store.durable)])
 left, right = st.columns([1, 1.9], gap="medium")
 
 # ------------------------------------------------------------------ 대화 (왼쪽 패널)
@@ -578,6 +586,32 @@ with tab_space, st.container(border=True, key="card7"):
                 if st.button("이 계획으로 저장할게요 (동의)", type="primary"):
                     S["plan"], S["plan_preview"], S["pending"] = preview, None, None
                     st.rerun()
+
+with tab_space:
+    with st.container(border=True, key="cardpath"):
+        ui.section("강의·교재 추천", "비용 선호에 맞춘 기본 경로 + 대안")
+        if not target.get("code"):
+            st.caption("목표 자격증을 정하면 그 자격증의 강의·교재·기출 자료를 찾아 드려요.")
+        else:
+            ui.kv([("대상", target["name"]), ("비용 선호", P["cost_pref"] or "미입력 — '강의 무료·교재 구매' 기준"),
+                   ("학습 방식", P["learning_style"] or "미입력"), ("주당 가용시간", f"{float(P['weekly_hours'] or 0):g}시간")])
+            st.caption("검색 결과에 실제로 있는 강의·교재만 보여 주고, 후기는 2곳 이상에서 반복된 의견만 요약해요. 불법 복제 자료는 추천하지 않아요.")
+            if not search:
+                ui.box("웹 검색 키가 아직 없어 강의·교재 이름을 확인할 수 없어요. 확인하지 않은 자료 이름은 지어내지 않아요. 키를 넣으면 이 버튼으로 바로 찾아요.",
+                       "blue", "지금은 일반 순서만 안내해요")
+            if st.button("강의·교재 찾기", type="primary", key="find_path"):
+                with st.spinner("강의·교재·기출 자료를 찾는 중이에요…"):
+                    cert_for_path = BY_CODE.get(target["code"]) or target
+                    S["study_path"] = {"cert": target["name"], "at": today.isoformat(),
+                                       "text": engine.study_path(cert_for_path, P, llm, search, today)}
+            found = S.get("study_path")
+            if found and found.get("cert") == target["name"]:
+                st.markdown(found["text"])
+                st.caption(f"{found['at']} 기준 · 가격·무료 범위는 바뀔 수 있으니 구매 전에 원문을 확인해 주세요.")
+            ui.label("기본 학습 순서")
+            ui.table(["단계", "비중", "하는 일"], [
+                ["개념", "40%", "강의·교재로 전체 범위 한 번 보기"], ["문제풀이", "25%", "단원별 문제 + 틀린 개념 다시 보기"],
+                ["기출", "25%", "기출문제 회차 풀이 + 오답 정리"], ["모의·복습", "10%", "실전 모의고사, 시험 직전 3일은 복습만"]])
 
 # ------------------------------------------------------------------ 프로필
 with tab_profile:
