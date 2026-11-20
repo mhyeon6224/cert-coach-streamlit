@@ -135,33 +135,77 @@ def send(message: str) -> str:
     return reply
 
 
-@st.dialog("Notion에 학습 공간 만들기", width="large")
-def notion_dialog(info) -> None:
+def notion_sync(token: str, link: str, today_value, hours: float, active: bool) -> list[str]:
+    """스킬의 체크인 절차: Notion 체크 읽기 → 지연 계산 → 필요하면 재조정 → 진행률·브리핑·계획을 Notion에 다시 쓰기."""
+    plan, lines = S["plan"], []
+    blocks = notion.read_blocks(token, link)
+    pulled = notion.pull_checks(blocks, plan)
+    if not pulled["found"]:
+        raise notion.NotionError("그 페이지에서 주차별 계획 체크박스를 찾지 못했어요. 앱이 만든 '학습 공간' 페이지의 링크를 넣어 주세요.")
+    done_now = [w for w, done in pulled["changed"] if done]
+    undone = [w for w, done in pulled["changed"] if not done]
+    lines.append("Notion 체크 가져오기: " + (f"완료 {len(done_now)}개" + (f", 완료 취소 {len(undone)}개" if undone else "") if pulled["changed"] else "바뀐 것 없음"))
+    info = planner.checkin(plan, today_value, hours or 1, int(S["profile"]["study_days"] or 5), S["target"])
+    if active and info["needs_readjust"]:
+        outcome = planner.readjust(plan, today_value, hours or plan["weekly_hours"], f"지연 {info['delay_days']:g}일")
+        lines.append(("재조정: " if outcome["status"] == "done" else "재조정 보류: ") + outcome["message"])
+        info = planner.checkin(plan, today_value, hours or 1, int(S["profile"]["study_days"] or 5), S["target"])
+    lines.append(f"진행률 {info['percent']}% · 지연 {info['delay_days']:g}일")
+    pushed = notion.push_updates(token, blocks, S, info if active else None)
+    lines.append(f"Notion에 다시 쓰기: {pushed['updated']}개 항목 갱신(오늘 브리핑·진행률·주차별 계획)")
+    if pushed["missing_weeks"]:
+        lines.append(f"확인 필요: 계획의 {pushed['missing_weeks']}개 주차는 그 페이지에 없어요. 계획을 새로 만들었다면 학습 공간도 새로 만들어 주세요.")
+    return lines
+
+
+@st.dialog("Notion 학습 공간", width="large")
+def notion_dialog(info, today_value, hours: float, active: bool) -> None:
     st.markdown(ui.badges([("내 Notion에만 저장", "navy"), ("토큰은 DB에 저장하지 않아요", "good")]), unsafe_allow_html=True)
-    st.markdown("내 Notion 워크스페이스의 원하는 페이지 아래에 **학습 공간 페이지**를 만들어요. 처음 한 번만 아래 준비가 필요해요.")
-    with st.expander("처음이라면: 3분 준비 방법", expanded=not st.session_state.get("notion_token")):
+    linked = (S.get("notion") or {}).get("url", "")
+    with st.expander("처음이라면: 3분 준비 방법", expanded=not (st.session_state.get("notion_token") or linked)):
         st.markdown(
-            "1. [notion.so/profile/integrations](https://www.notion.so/profile/integrations) 에서 **새 API 통합(New integration)** 을 만들어요. "
-            "유형은 **내부(Internal)**, 워크스페이스는 본인 것을 고르면 돼요.\n"
-            "2. 만들어진 통합 화면에서 **내부 통합 시크릿(Internal Integration Secret)** 을 복사해요. `ntn_`로 시작해요.\n"
-            "3. 학습 공간을 넣고 싶은 Notion 페이지를 열고, 오른쪽 위 **⋯ → 연결(Connections)** 에서 방금 만든 통합을 추가해요. "
+            "1. [notion.so/profile/integrations](https://www.notion.so/profile/integrations) 에서 **새 연결(New connection)** 을 만들어요. "
+            "인증 방식은 **API token**, 워크스페이스는 본인 것을 고르면 돼요.\n"
+            "2. 만들어진 화면에서 **토큰** 을 복사해요. `ntn_`로 시작해요.\n"
+            "3. 학습 공간을 넣고 싶은 Notion 페이지를 **연 뒤**, 본문 오른쪽 위 **⋯ → 연결(Connections)** 에서 방금 만든 연결을 추가해요. "
             "이 단계를 빼먹으면 '접근 권한이 없어요'가 나와요.\n"
             "4. 같은 페이지에서 **⋯ → 링크 복사** 로 페이지 주소를 복사해요.")
-    token = st.text_input("① 내부 통합 시크릿", type="password", value=st.session_state.get("notion_token", ""),
+    token = st.text_input("토큰", type="password", value=st.session_state.get("notion_token", ""),
                           placeholder="ntn_...", help="이 브라우저 창에서만 기억하고, 서버 DB에는 저장하지 않아요.")
-    link = st.text_input("② 학습 공간을 만들 페이지 링크", value=st.session_state.get("notion_parent", ""),
-                         placeholder="https://www.notion.so/...")
-    agree = st.checkbox("내 Notion에 페이지를 새로 만드는 데 동의해요")
-    if st.button("학습 공간 만들기", type="primary", disabled=not (token and link and agree)):
-        try:
-            with st.spinner("Notion에 페이지를 만드는 중이에요…"):
-                url = notion.create_space(token, link, S, info)
-            st.session_state["notion_token"], st.session_state["notion_parent"] = token.strip(), link.strip()
-            st.success("페이지를 만들었어요.")
-            if url:
-                st.link_button("Notion에서 열기", url)
-        except notion.NotionError as error:
-            st.error(f"만들지 못했어요. {error}")
+    make, sync = st.tabs(["새로 만들기", "동기화 (체크 가져오기 · 계획 다시 쓰기)"])
+    with make:
+        st.caption("고른 페이지 아래에 학습 공간 페이지를 새로 만들어요.")
+        link = st.text_input("학습 공간을 넣을 페이지 링크", value=st.session_state.get("notion_parent", ""),
+                             placeholder="https://www.notion.so/...")
+        agree = st.checkbox("내 Notion에 페이지를 새로 만드는 데 동의해요")
+        if st.button("학습 공간 만들기", type="primary", disabled=not (token and link and agree)):
+            try:
+                with st.spinner("Notion에 페이지를 만드는 중이에요…"):
+                    url = notion.create_space(token, link, S, info)
+                st.session_state["notion_token"], st.session_state["notion_parent"] = token.strip(), link.strip()
+                S["notion"] = {"url": url}
+                st.success("페이지를 만들었어요. 완료는 Notion에서 체크하고, 이 창의 '동기화'로 맞추면 돼요.")
+                if url:
+                    st.link_button("Notion에서 열기", url)
+            except notion.NotionError as error:
+                st.error(f"만들지 못했어요. {error}")
+    with sync:
+        st.caption("Notion에서 체크한 완료를 앱으로 가져와 진행률·지연을 다시 계산하고, 지연이 기준(3일 또는 주당 시간의 50%)을 넘으면 "
+                   "남은 기간으로 재조정한 뒤, 오늘 브리핑·진행률·주차별 계획을 같은 페이지에 다시 써요. 새 페이지는 만들지 않아요.")
+        page = st.text_input("학습 공간 페이지 링크", value=linked, placeholder="앱이 만든 'OOO 학습 공간' 페이지의 링크",
+                             help="이 앱에서 만들었다면 자동으로 채워져요. 비어 있으면 Notion에서 그 페이지의 링크를 복사해 넣어 주세요.")
+        agree_sync = st.checkbox("그 페이지의 브리핑·진행률·계획 항목을 앱이 고쳐 쓰는 데 동의해요")
+        if st.button("Notion과 동기화", type="primary", disabled=not (token and page and agree_sync)):
+            try:
+                with st.spinner("Notion을 읽고 다시 쓰는 중이에요…"):
+                    lines = notion_sync(token, page, today_value, hours, active)
+                st.session_state["notion_token"] = token.strip()
+                S["notion"] = {"url": page.strip()}
+                st.success("동기화했어요. 창을 닫으면 앱의 진행률에도 반영돼 있어요.")
+                for line in lines:
+                    st.markdown(f"- {line}")
+            except notion.NotionError as error:
+                st.error(f"동기화하지 못했어요. {error}")
     st.caption("실패해도 앱 안의 학습 공간과 .md 내보내기는 그대로 쓸 수 있어요.")
 
 
@@ -545,8 +589,8 @@ with tab_space, st.container(border=True, key="card7"):
                     row["done"], row["memo"] = bool(new["done"]), str(new["memo"] or "")
                 st.rerun()
             c1, c2, c3, c4 = st.columns(4)
-            if c4.button("Notion에 만들기", type="primary", use_container_width=True):
-                notion_dialog(info if active else None)
+            if c4.button("Notion 만들기·동기화", type="primary", use_container_width=True):
+                notion_dialog(info if active else None, today, hours, active)
             if c1.button("남은 기간으로 재조정", disabled=not active, use_container_width=True):
                 outcome = planner.readjust(plan, today, hours or plan["weekly_hours"], f"지연 {info['delay_days']:g}일")
                 st.session_state["flash"] = outcome["message"]
@@ -678,7 +722,7 @@ with tab_more:
         ui.section("연동", "모두 본인 계정에만, 동의한 뒤에만")
         ui.table(["기능", "어디서", "설명"], [
             ["Google Calendar", "일정 탭", "공식 확인된 일정 중 고른 것만 내 캘린더에 등록 · .ics 파일도 가능"],
-            ["Notion", "계획 탭", "내 토큰을 넣으면 내 워크스페이스에 학습 공간 페이지 생성"],
+            ["Notion", "계획 탭", "내 토큰으로 학습 공간 페이지 생성 · Notion에서 체크한 완료를 가져와 진행률·재조정을 맞추는 동기화"],
             ["취업 가이드라인", "프로필 탭 → 추천 탭", "관심 공고나 목표 직무가 있을 때만 작성"],
             ["내보내기", "계획 탭", "학습 공간을 마크다운(.md) 파일로 저장"]])
     with st.container(border=True, key="card13"):

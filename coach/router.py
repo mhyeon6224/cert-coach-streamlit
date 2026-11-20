@@ -26,7 +26,7 @@ def new_state() -> dict:
                     "interest_posting": ""},
         "target": {}, "recommendations": None, "schedules": {}, "plan": None, "plan_preview": None,
         "boost_phase": None, "assets": [], "validity_opt_in": False, "pending": None,
-        "messages": [], "guideline": None, "study_path": None,
+        "messages": [], "guideline": None, "study_path": None, "notion": None,
     }
 
 
