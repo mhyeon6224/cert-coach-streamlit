@@ -151,8 +151,12 @@ def calendar_events(target: dict) -> list[dict]:
                              ("exam_date", "시험일", "시험"), ("result_date", "합격자 발표", "발표")):
         if target.get(key):
             events.append({"title": f"[{name}] {label}", "date": target[key], "kind": kind, "memo": f"근거: {basis}"})
-    events.append({"title": f"[{name}] 수험표 출력·고사장(자리) 공지", "date": None, "kind": "확인 필요",
-                   "memo": "날짜 미확인 — 주관기관 공지에서 확인한 뒤 날짜를 직접 넣어 주세요"})
+    if target.get("venue_notice"):
+        events.append({"title": f"[{name}] 수험표 출력·고사장(자리) 공지 시작", "date": target["venue_notice"], "kind": "확인 필요",
+                       "memo": f"근거: {basis} · 주관기관 일정표의 장소공고 시작일"})
+    else:
+        events.append({"title": f"[{name}] 수험표 출력·고사장(자리) 공지", "date": None, "kind": "확인 필요",
+                       "memo": "날짜 미확인 — 주관기관 공지에서 확인한 뒤 날짜를 직접 넣어 주세요"})
     return events
 
 

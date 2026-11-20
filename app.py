@@ -15,7 +15,7 @@ import pandas as pd
 import streamlit as st
 
 from coach import engine, plan as planner
-from coach.catalog import BY_CODE, CATALOG, find_cert
+from coach.catalog import BY_CODE, CATALOG, cert_from_item, find_cert
 from coach.router import apply_round, do_plan, do_recommend, handle, new_state, set_target
 from coach.services import build_services, secret
 from coach import gcal, notion, storage, ui
@@ -193,6 +193,8 @@ def notion_sync(token: str, link: str, today_value, hours: float, active: bool) 
     plan, lines = S["plan"], []
     blocks = notion.read_blocks(token, link)
     pulled = notion.pull_checks(blocks, plan)
+    if any(done for _, done in pulled["changed"]):
+        planner.mark_progress(plan, today_value)
     if not pulled["found"]:
         raise notion.NotionError("그 페이지에서 주차별 계획 체크박스를 찾지 못했어요. 앱이 만든 'OOO 학습 공간' 페이지의 링크를 넣어 주세요. "
                                  "(그 페이지를 넣어 둔 상위 페이지 링크가 아니에요.)")
@@ -552,10 +554,13 @@ with tab_rec:
                         ui.label("대안 자격증")
                     ui.card_head([(f"대안 {item['rank'] - 1}", "sky")], item["name"], "")
                 ui.box(item["reason"], "", "진로 연결 근거")
+                if item.get("outside"):
+                    ui.box(f"앱 목록 밖 자격증이에요. {item['outside']}만 한 상태라 일정·응시료·응시자격은 '일정' 탭에서 따로 확인해 주세요.",
+                           "blue", "목록 밖 · 경량 확인")
                 ui.kv([("주관", item["issuer"]), ("응시자격", "제한 있음 — 공식 확인 필요" if item["restricted"] else "제한 없음"),
                        ("준비 예상 범위", item["prep_scope"]), ("주의점", item["caution"])])
                 if st.button(f"{item['name']}(으)로 준비 시작", key=f"start_{item['code']}", type="primary" if item["rank"] == 1 else "secondary"):
-                    set_target(S, BY_CODE[item["code"]])
+                    set_target(S, cert_from_item(item))
                     st.session_state["flash"] = f"{item['name']} 준비를 시작했어요. '일정' 탭에서 시험일을 확인해 주세요."
                     st.rerun()
             ui.label("한눈에 비교")
@@ -605,6 +610,8 @@ with tab_sched, st.container(border=True, key="card5"):
     col1, col2 = st.columns([3, 1])
     picked = col1.selectbox("자격증", names, label_visibility="collapsed")
     cert = BY_CODE.get(target.get("code")) if picked == target.get("name") and target.get("code") in BY_CODE else find_cert(picked)
+    if not cert:  # 목록 밖 추천 후보는 추천 때 담아 둔 정보로 찾는다
+        cert = next((cert_from_item(c) for c in (S.get("recommendations") or {}).get("candidates", []) if c["name"] == picked), None)
     cert = cert or target
     if col2.button("공식 일정 확인", type="primary", use_container_width=True):
         with st.spinner("주관기관 공식 페이지를 확인하는 중이에요…"):
@@ -632,6 +639,12 @@ with tab_sched, st.container(border=True, key="card5"):
                 ui.box(" / ".join(items), kind, head)
         if result["reference"] and not future:
             st.caption(f"참고(자료집 기준 2025-12-31, 일정 아님): {result['reference'][:300]}…")
+        if result.get("guide"):
+            _g = result["guide"]
+            ui.label(f"자료집 참고 · {_g['name']}")
+            ui.kv([("응시료", _g["fee"]), ("응시자격", _g["eligibility"][:140]), ("자격 유효기간", _g["validity"]),
+                   ("공인 유효기간", _g["accredited_until"])])
+            st.caption("2025년 공인민간자격 정보자료집(PDF) 기준이에요. 공식 원문을 대신하지 않으니 접수 전에 공식 사이트에서 다시 확인해 주세요.")
         ui.table(["공식 페이지"], [[("link", s["title"] or s["url"], s["url"])] for s in result["sources"][:4]]
                  or [[("link", result["official_url"], result["official_url"])]])
         if future:
@@ -759,6 +772,8 @@ with tab_space, st.container(border=True, key="card7"):
                                "done": st.column_config.CheckboxColumn("완료"), "memo": "메모"}, key="plan_editor")
             new_rows = edited.to_dict("records")
             if [(r["done"], r["memo"]) for r in new_rows] != [(r["done"], r["memo"]) for r in plan["rows"]]:
+                if any(bool(new["done"]) and not row["done"] for row, new in zip(plan["rows"], new_rows)):
+                    planner.mark_progress(plan, today)  # 완료 체크가 새로 생긴 날 기록
                 for row, new in zip(plan["rows"], new_rows):
                     row["done"], row["memo"] = bool(new["done"]), str(new["memo"] or "")
                 st.rerun()
@@ -860,6 +875,10 @@ with tab_profile:
         days = f2.number_input("주당 공부 일수", 1, 7, int(P["study_days"] or 5))
         period = f1.text_input("목표 시기", P["target_period"], placeholder="예: 내년 상반기")
         owned = f2.text_input("보유 자격증 (쉼표로 구분)", ", ".join(P["owned"]))
+        budget = f1.text_input("예산 (강의·교재)", P.get("budget", ""), placeholder="예: 교재 3만원 이내, 강의 10만원까지")
+        english = f2.text_input("영어 성적", P.get("english", ""), placeholder="예: TOEIC 850 (2026-03 취득)")
+        extra = st.text_area("기타 (추천에 반영할 추가 정보)", P.get("extra", ""), height=80,
+                             placeholder="예: 주말에만 공부 가능, 수학이 약함, 필기보다 실기가 걱정, 졸업 요건으로 필요")
         posting = st.text_area("관심 공고 (선택)", P["interest_posting"], height=90,
                                placeholder="채용공고 본문을 붙여 넣으면 취업 가이드라인을 만들어요.")
         if st.form_submit_button("저장", type="primary"):
@@ -867,10 +886,21 @@ with tab_profile:
             P.update(desired_job=job.strip(), major_experience=major.strip(),
                      owned=[o.strip() for o in owned.split(",") if o.strip()], learning_style=style, cost_pref=cost,
                      weekly_hours=float(hours), study_days=int(days), target_period=period.strip(),
-                     interest_posting=posting.strip())
+                     interest_posting=posting.strip(), budget=budget.strip()[:200], english=english.strip()[:200],
+                     extra=extra.strip()[:800])
             st.session_state["flash"] = ("주당 시간이 바뀌었어요. '계획' 탭에서 재조정할 수 있어요."
                                          if S.get("plan") and hours and hours != old_hours else "프로필을 저장했어요.")
             st.rerun()
+    if P.get("exam_history"):
+        with st.container(border=True, key="card14"):
+            ui.section("시험 이력", "합격·불합격을 알려 주면 여기에 쌓이고, 다음 추천에 반영돼요")
+            ui.table(["자격증", "결과", "날짜", "가장 부족했던 단계"],
+                     [[h.get("cert", ""), (h.get("result", ""), "good" if h.get("result") == "합격" else "warn"), h.get("date", ""),
+                       f"{h['weak_phase']} (완료율 {h['weak_percent']}%)" if h.get("weak_phase") else "기록 없음"]
+                      for h in reversed(P["exam_history"])])
+            if st.button("시험 이력 지우기", key="clear_history"):
+                P["exam_history"] = []
+                st.rerun()
     with st.container(border=True, key="card9"):
         ui.section("저장 상태", "")
         ui.table(["항목", "상태"], [

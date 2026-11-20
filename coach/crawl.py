@@ -17,6 +17,8 @@ HEADERS = {
 }
 DATAQ_URL = "https://www.dataq.or.kr/www/accept/schedule.do"
 TOEIC_URL = "https://exam.toeic.co.kr/receipt/examSchList.php"
+KACPTA_URL = "https://license.kacpta.or.kr/web/info/info_diary.aspx"
+KACPTA_CODES = {"ACCOUNT_1", "TAX_2", "ADHOC_전산세무회계"}
 DATAQ_SECTIONS = ["빅데이터 분석기사", "데이터분석 전문가", "데이터분석 준전문가", "SQL 전문가", "SQL 개발자",
                   "데이터아키텍처 전문가", "데이터아키텍처 준전문가"]
 DATAQ_NAMES = {"SQLD": "SQL 개발자", "SQLP": "SQL 전문가", "ADSP": "데이터분석 준전문가", "BIGDATA": "빅데이터 분석기사"}
@@ -79,6 +81,28 @@ def parse_toeic(text: str) -> list[dict]:
     return rows
 
 
+def parse_kacpta(text: str) -> list[dict]:
+    """한국세무사회 연간 일정표(전산세무·전산회계). 장소공고(수험표·고사장 확인) 기간도 함께 읽는다."""
+    start = text.find("전산세무 1,2급")
+    if start < 0:
+        return []
+    year_match = re.search(r"(20\d{2})년", text[max(0, start - 400):start]) or re.search(r"(20\d{2})년", text)
+    if not year_match:
+        return []
+    year = int(year_match[1])
+    end = re.search(r"20\d{2}년", text[start:])
+    chunk = text[start:start + end.start()] if end else text[start:start + 1500]
+    md = r"(\d{1,2})\.\s?(\d{1,2})"
+    pattern = re.compile(rf"제\s?(\d+)\s?회\s+{md}\s*[∼~]\s*{md}\s+{md}\s*[∼~]\s*{md}\s+{md}\([월화수목금토일]\)\s+{md}")
+    rows = []
+    for m in pattern.finditer(chunk):
+        def day(i: int) -> str | None:
+            return _md(year, f"{m[i]}.{m[i + 1]}")
+        rows.append({"round": f"{year}년 제{m[1]}회", "reg_start": day(2), "reg_end": day(4), "venue_start": day(6),
+                     "venue_end": day(8), "exam_date": day(10), "result_date": day(12), "source_url": KACPTA_URL})
+    return [r for r in rows if r["exam_date"]]
+
+
 def crawl_official(cert: dict) -> dict | None:
     """직접 읽을 수 있는 사이트면 {"rounds", "url", "title"}을, 대상이 아니면 None을 돌려준다.
 
@@ -87,6 +111,8 @@ def crawl_official(cert: dict) -> dict | None:
     code = cert.get("code")
     if code in DATAQ_NAMES:
         url, title, parser = DATAQ_URL, "데이터자격시험 연간 일정표", lambda t: parse_dataq(t, DATAQ_NAMES[code])
+    elif code in KACPTA_CODES:
+        url, title, parser = KACPTA_URL, "한국세무사회 자격시험 연간 일정", parse_kacpta
     elif code == "TOEIC":
         url, title, parser = TOEIC_URL, "TOEIC 시험일정", parse_toeic
     else:

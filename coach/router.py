@@ -10,7 +10,7 @@ import re
 from datetime import date
 
 from . import engine, plan as planner
-from .catalog import BY_CODE, find_cert
+from .catalog import BY_CODE, cert_from_item, find_cert
 from .services import LLM, LLMError, Search
 
 INTENTS = ["recommend", "schedule", "prepare", "decide", "registered", "exam_taken", "passed", "failed",
@@ -23,7 +23,7 @@ def new_state() -> dict:
     return {
         "profile": {"desired_job": "", "major_experience": "", "owned": [], "learning_style": "", "cost_pref": "",
                     "budget": "", "weekly_hours": 0.0, "study_days": 5, "target_period": "", "english": "",
-                    "interest_posting": ""},
+                    "interest_posting": "", "extra": "", "exam_history": []},
         "target": {}, "recommendations": None, "schedules": {}, "plan": None, "plan_preview": None,
         "boost_phase": None, "assets": [], "validity_opt_in": False, "pending": None,
         "messages": [], "guideline": None, "guideline_detail": None, "study_path": None, "notion": None, "memo": "", "notices": [],
@@ -34,7 +34,7 @@ def set_target(state: dict, cert: dict) -> None:
     if state["target"].get("code") != cert["code"]:
         state["target"] = {k: cert.get(k) for k in ("code", "name", "issuer", "official_url", "domain")}
         state["target"].update(state="준비중", exam_date=None, reg_start=None, reg_end=None, result_date=None,
-                               fee=None, source_url=None, basis=None, checked_at=None)
+                               fee=None, source_url=None, basis=None, checked_at=None, venue_notice=None)
         state["plan"], state["plan_preview"] = None, None
     schedule = state["schedules"].get(cert["name"])
     if schedule and not state["target"].get("exam_date"):
@@ -47,6 +47,7 @@ def apply_round(state: dict, row: dict, schedule: dict) -> None:
     state["target"].update(
         exam_date=row["exam_date"], reg_start=row.get("reg_start"), reg_end=row.get("reg_end"),
         result_date=row.get("result_date"), round=row.get("round"), source_url=row.get("source_url"),
+        venue_notice=row.get("venue_start"),
         fee=(schedule.get("fee") or {}).get("text"), basis="공식 페이지 대조 확인", checked_at=schedule["checked_at"])
 
 
@@ -70,7 +71,8 @@ ROUTER_PROMPT = """너는 자격증 코치 서비스의 요청 분류기다. 사
 {{"intent": "{intents}" 중 하나,
   "certificate": "문장에 나온 자격증 이름 또는 null",
   "profile": {{"desired_job": null, "major_experience": null, "weekly_hours": null, "study_days": null,
-              "cost_pref": null, "learning_style": null, "target_period": null, "budget": null, "owned_add": []}}}}
+              "cost_pref": null, "learning_style": null, "target_period": null, "budget": null, "english": null,
+              "extra": null, "owned_add": []}}}}
 intent 기준:
 - recommend: 어떤 자격증이 좋은지 / 다시 추천   - schedule: 접수·시험 일정, 응시료, 응시자격
 - prepare: 강의·교재·기출·공부 방법            - decide: 이 자격증으로 준비하겠다, 이번 회차에 보겠다
@@ -82,6 +84,8 @@ profile은 사용자가 이 문장에서 **직접 말한 값만** 채운다(나�
 - weekly_hours: 주당 시간(숫자). "하루 1시간씩 주 5일"이면 5.
 - cost_pref: {costs} 중 하나.  - learning_style: {styles} 중 하나.
 - owned_add: 이미 보유했다고 말한 자격증 이름 배열.
+- budget: 강의·교재에 쓸 수 있는 금액(말한 그대로).  - english: 영어 시험명과 점수(예: "TOEIC 850").
+- extra: 위 항목에 들어가지 않지만 추천·계획에 영향을 줄 사정(예: "주말에만 공부 가능", "수학이 약함"). 없으면 null.
 현재 대기 중인 질문: {pending}"""
 
 
@@ -152,11 +156,15 @@ def interpret(message: str, state: dict, llm: LLM | None) -> tuple[str, dict | N
 def apply_profile(state: dict, updates: dict) -> list[str]:
     """새로 말한 값만 갱신한다. 이미 확인된 다른 값은 건드리지 않는다."""
     profile, changed = state["profile"], []
-    for key in ("desired_job", "major_experience", "target_period", "budget"):
+    for key in ("desired_job", "major_experience", "target_period", "budget", "english"):
         if isinstance(updates.get(key), str) and updates[key].strip() and updates[key] != profile.get(key):
             profile[key] = updates[key].strip()[:200]
             changed.append({"desired_job": "희망 직무", "major_experience": "전공·경험", "target_period": "목표 시기",
-                            "budget": "예산"}[key] + f" {profile[key]}")
+                            "budget": "예산", "english": "영어 성적"}[key] + f" {profile[key]}")
+    extra = updates.get("extra")
+    if isinstance(extra, str) and extra.strip() and extra.strip() not in (profile.get("extra") or ""):
+        profile["extra"] = ((profile.get("extra") or "") + "\n" + extra.strip()[:200]).strip()[:800]
+        changed.append(f"기타 사항 +{extra.strip()[:60]}")
     for key, low, high, label in (("weekly_hours", 0.5, 80, "주당 가용시간"), ("study_days", 1, 7, "주당 공부 일수")):
         try:
             value = float(updates[key])
@@ -184,16 +192,29 @@ def _resolve_cert(state: dict, cert: dict | None, message: str) -> dict | None:
         return cert
     recs = (state.get("recommendations") or {}).get("candidates") or []
     if recs and re.search(r"1\s*순위|첫\s*번째", message):
-        return BY_CODE[recs[0]["code"]]
+        return cert_from_item(recs[0])
     if len(recs) > 1 and re.search(r"대안|2\s*순위|두\s*번째", message):
-        return BY_CODE[recs[1]["code"]]
+        return cert_from_item(recs[1])
     if state["target"].get("code"):
         return BY_CODE.get(state["target"]["code"]) or state["target"]
-    return BY_CODE[recs[0]["code"]] if recs else None
+    return cert_from_item(recs[0]) if recs else None
+
+
+def log_result(state: dict, result: str, today: date) -> tuple[str, int] | None:
+    """합격·불합격을 시험 이력에 남긴다(다음 추천·학습 경로에 반영). 불합격이면 가장 부족했던 단계도 함께 적는다."""
+    target = state["target"]
+    weak = planner.weakest_phase(state["plan"]) if result == "불합격" and state.get("plan") else None
+    entry = {"cert": target.get("name") or "", "result": result, "date": today.isoformat(),
+             "weak_phase": weak[0] if weak else "", "weak_percent": weak[1] if weak else None}
+    history = state["profile"].setdefault("exam_history", [])
+    history[:] = [h for h in history if not (h.get("cert") == entry["cert"] and h.get("date") == entry["date"])]
+    history.append(entry)
+    del history[:-10]
+    return weak
 
 
 def do_recommend(state, llm, search, today, *, after_pass="", exclude=None) -> str:
-    result = engine.recommend(state["profile"], llm, today, after_pass=after_pass, exclude=exclude)
+    result = engine.recommend(state["profile"], llm, today, after_pass=after_pass, exclude=exclude, search=search)
     state["recommendations"] = result
     text = engine.recommend_markdown(result)
     detail: dict = {}
@@ -318,6 +339,8 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
             questions.append("어떤 방식이 잘 맞나요? (개념 강의형 / 문제풀이형 / 독학형 / 혼합형)")
         if not profile.get("weekly_hours"):
             questions.append("일주일에 몇 시간 정도 공부할 수 있나요?")
+        if not profile.get("budget") and profile.get("cost_pref") != "완전 무료":
+            questions.append("강의·교재에 쓸 수 있는 예산이 있나요? (예: 5만원 이내 / 상관없음)")
         if questions and pending != "path_inputs":
             state["pending"], state["pending_cert"] = "path_inputs", target_cert["name"]
             return prefix + (f"**{target_cert['name']}** 강의·교재를 고르기 전에 학습 조건만 여쭤볼게요. 한 번에 답해 주셔도 돼요.\n\n"
@@ -361,19 +384,21 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
     if intent == "passed":
         target["state"] = "합격"
         passed_name = target["name"]
+        log_result(state, "합격", today)
         nxt = do_recommend(state, llm, search, today, after_pass=passed_name, exclude={target.get("code", "")})
         state["pending"] = "owned_confirm"
         return prefix + (f"🎉 {passed_name} 합격을 반영했어요. (상태: 합격)\n\n**다음 단계 제안**\n\n{nxt}\n\n---\n\n"
                          f"보유 자격증 목록에 {passed_name}을(를) 추가할까요? (응 / 아니)")
     if intent == "failed":
         target["state"] = "불합격"
-        weak = planner.weakest_phase(state["plan"]) if state.get("plan") else None
+        weak = log_result(state, "불합격", today)
         fact = f"학습 공간 기록으로는 **{weak[0]} 단계 완료율이 {weak[1]}%**로 가장 낮았어요." if weak else \
             "저장된 학습 기록이 없어 부족했던 단계는 확인하지 못했어요."
         state["boost_phase"] = weak[0] if weak else None
         state["plan"] = None
         target.update(exam_date=None, reg_start=None, reg_end=None, result_date=None, basis=None)
         return prefix + (f"{target['name']} 결과를 반영했어요. (상태: 불합격)\n\n{fact}\n\n"
+                         "이 결과는 시험 이력에 남겨서 다음 자격증 추천과 강의·교재 추천에 반영해요.\n\n"
                          "다음 계획: ① \"시험 일정 알려줘\"로 다음 회차 공식 일정 확인 ② \"이번 회차로 준비할래\" "
                          "③ \"학습 계획 세워줘\" — " + (f"'{weak[0]}' 비중을 올린 계획으로 만들게요." if weak else "새 계획을 만들게요."))
 

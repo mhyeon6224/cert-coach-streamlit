@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -138,6 +139,34 @@ def _private() -> list[dict]:
     ]
 
 
+@lru_cache(maxsize=1)
+def _guide() -> list[dict]:
+    """공인민간자격 정보자료집(PDF)에서 뽑아 둔 자격증별 응시자격·응시료·유효기간·기관."""
+    path = DATA_DIR / "private_guide.json"
+    if not path.exists():
+        return []
+    return json.loads(path.read_text(encoding="utf-8")).get("rows", [])
+
+
+GUIDE_ALIASES = {"전산회계": "전산세무회계", "전산세무": "전산세무회계", "ERP정보관리사 회계": "ERP회계정보관리사",
+                 "SQLD": "SQL", "SQLP": "SQL"}
+
+
+def private_guide(name: str) -> dict | None:
+    """자료집(PDF)에서 이름이 맞는 종목. 화면에는 항상 '자료집 기준'으로 표시한다."""
+    base = re.sub(r"\s*\d급$", "", name or "").strip()
+    key = norm(GUIDE_ALIASES.get(base, base))
+    if len(key) < 3:
+        return None
+    best = None
+    for row in _guide():
+        rkey = norm(re.sub(r"\(.*?\)", "", row["name"]))
+        if rkey and (rkey == key or (len(rkey) >= 3 and (rkey in key or key in rkey))):
+            if best is None or abs(len(rkey) - len(key)) < abs(len(norm(best["name"])) - len(key)):
+                best = row
+    return best
+
+
 def reference_info(name: str) -> dict[str, str]:
     """국가기술자격 종목별 시험정보(자료집). 없으면 빈 dict."""
     key = norm(re.sub(r"\s*\d급$", "", name or ""))
@@ -171,6 +200,12 @@ def find_cert(text: str) -> dict | None:
             hit = (len(nkey), row)
     if hit:
         return adhoc_cert(hit[1]["name"])
+    for row in _guide():  # 공인민간자격 정보자료집에 있는 종목
+        gkey = norm(re.sub(r"\(.*?\)", "", row["name"]))
+        if len(gkey) >= 3 and gkey in key and (hit is None or len(gkey) > hit[0]):
+            hit = (len(gkey), row)
+    if hit:
+        return adhoc_cert(hit[1]["name"])
     return None
 
 
@@ -182,6 +217,11 @@ def adhoc_cert(name: str) -> dict:
     url = (info.get("실시기관 홈페이지") or "").strip()
     if url and not url.startswith("http"):
         url = "https://" + url
+    guide = None if (info or listed) else private_guide(name)
+    if guide:
+        issuer, url = guide["issuer"] or issuer, guide["homepage"]
+        if url and not url.startswith("http"):
+            url = "https://" + url
     if not url and listed:
         url = "https://www.q-net.or.kr/"
     url = url.replace("http://", "https://")
@@ -192,6 +232,23 @@ def adhoc_cert(name: str) -> dict:
         "desc": (info.get("개요") or "카탈로그 밖 자격증 — 세부 정보는 공식 사이트에서 확인이 필요해요.")[:160],
         "aliases": [name.strip()], "restricted": False, "next": [], "adhoc": True,
     }
+
+
+def external_cert(name: str, issuer: str, url: str, desc: str = "") -> dict:
+    """목록·자료집에 없는 자격증을 검색으로 확인했을 때 쓰는 임시 항목(경량 확인: 시행 여부·주관·공식 사이트만)."""
+    parts = url.split("/")
+    root = "/".join(parts[:3]) + "/" if len(parts) >= 3 else url
+    return {
+        "code": "EXT_" + norm(name).upper(), "name": name.strip(), "issuer": issuer.strip() or "미확인", "official_url": root,
+        "domain": re.sub(r"^www\.", "", parts[2]) if len(parts) >= 3 else "", "tags": [], "level": "미확인",
+        "desc": desc[:160] or "목록 밖 자격증 — 세부 정보는 공식 사이트에서 확인이 필요해요.",
+        "aliases": [name.strip()], "restricted": False, "next": [], "adhoc": True,
+    }
+
+
+def cert_from_item(item: dict) -> dict | None:
+    """추천 결과 한 줄에서 자격증 정보를 되찾는다(목록 → 추천 때 담아 둔 정보 → 이름 검색 순)."""
+    return BY_CODE.get(item.get("code")) or item.get("cert") or find_cert(item.get("name") or "")
 
 
 def is_owned(cert: dict, owned: list[str]) -> bool:

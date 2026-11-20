@@ -11,7 +11,8 @@ import json
 import re
 from datetime import date
 
-from .catalog import BY_CODE, CATALOG, find_cert, is_owned, job_tags, private_accreditation, reference_info
+from .catalog import (BY_CODE, CATALOG, external_cert, find_cert, is_owned, job_tags, private_accreditation,
+                      private_guide, reference_info)
 from .crawl import crawl_official
 from .services import LLM, LLMError, Search, SearchError, host_matches
 
@@ -27,17 +28,32 @@ def profile_text(profile: dict) -> str:
         ("비용 선호", profile.get("cost_pref")), ("예산", profile.get("budget")),
         ("주당 가용시간", f"{float(profile['weekly_hours']):g}시간" if profile.get("weekly_hours") else ""),
         ("목표 시기", profile.get("target_period")), ("영어 성적", profile.get("english")),
+        ("기타 사항", (profile.get("extra") or "").replace("\n", " / ")), ("시험 이력", history_text(profile)),
     ]
     return "\n".join(f"- {k}: {v}" for k, v in rows if v) or "- (입력된 조건 없음)"
+
+
+def history_text(profile: dict) -> str:
+    """합격·불합격 이력을 한 줄로. 예: 'SQLD 불합격(2026-11-20, 기출 단계 완료율 20%)'"""
+    parts = []
+    for h in profile.get("exam_history") or []:
+        if not isinstance(h, dict) or not h.get("cert"):
+            continue
+        weak = f", {h['weak_phase']} 단계 완료율 {h['weak_percent']}%" if h.get("weak_phase") else ""
+        parts.append(f"{h['cert']} {h.get('result', '')}({h.get('date', '')}{weak})")
+    return "; ".join(parts)
 
 
 def used_info(profile: dict, keys: list[str]) -> str:
     labels = {"desired_job": "희망 직무", "owned": "보유 자격증", "learning_style": "학습 방식",
               "cost_pref": "비용 선호", "weekly_hours": "주당 가용시간", "target_period": "목표 시기",
-              "major_experience": "전공·경험"}
+              "major_experience": "전공·경험", "budget": "예산", "english": "영어 성적", "extra": "기타 사항",
+              "exam_history": "시험 이력"}
     parts = []
     for key in keys:
-        value = profile.get(key)
+        value = history_text(profile) if key == "exam_history" else profile.get(key)
+        if key == "extra" and value:
+            value = str(value).replace("\n", " / ")[:80]
         if value:
             shown = ", ".join(value) if isinstance(value, list) else (f"{float(value):g}시간" if key == "weekly_hours" else value)
             parts.append(f"{labels[key]} {shown}")
@@ -86,19 +102,57 @@ def _rule_candidates(profile: dict, exclude: set[str]) -> list[dict]:
 
 
 RECOMMEND_PROMPT = """너는 처음 자격증 준비를 시작하는 사람을 돕는 자격증 코치다. {untrusted}
-[자격증 카탈로그]의 code 중에서만 고른다. 1순위 1개와 대안 1개(조건이 갈릴 때만 최대 2개)를 추천한다.
+[자격증 카탈로그]의 code 중에서 고르는 것이 원칙이다. 1순위 1개와 대안 1개(조건이 갈릴 때만 최대 2개)를 추천한다.
+카탈로그에 사용자의 직무·조건에 맞는 자격증이 없거나 더 잘 맞는 실제 자격증이 따로 있을 때만, 후보 1개에 한해
+"code"를 null로 두고 "name"에 그 자격증의 정확한 이름을 적는다(실제로 시행 중인 자격증만. 확신이 없으면 쓰지 않는다).
 아래 JSON만 출력한다.
 {{"summary": "2~3문장 요약", "practice_first": "추가 자격증보다 프로젝트·실무·포트폴리오가 먼저라고 판단되면 그 이유 1문장, 아니면 빈 문자열",
-  "candidates": [{{"code": "카탈로그 code", "reason": "진로 연결 근거 1~2문장", "prep_scope": "준비 예상 범위 1문장", "caution": "주의점 1문장"}}]}}
+  "candidates": [{{"code": "카탈로그 code 또는 null", "name": "code가 null일 때만 자격증 이름", "reason": "진로 연결 근거 1~2문장", "prep_scope": "준비 예상 범위 1문장", "caution": "주의점 1문장"}}]}}
 규칙:
 - 이미 보유한 자격증과 제외 목록은 추천하지 않는다. 보유 자격과 과도하게 겹치는 후보는 낮춘다.
 - 시험 일정·응시료·합격률 같은 숫자 사실은 쓰지 않는다. 취업·합격을 보장하는 표현을 쓰지 않는다.
 - 사용자가 말하지 않은 조건을 지어내지 않는다.
+- [사용자 조건]의 '기타 사항'과 '영어 성적'·'예산'이 있으면 후보 선택과 주의점에 반영하고, 반영했다면 reason이나 caution에 그 연결을 한 구절로 적는다.
+- '시험 이력'에 불합격이 있으면: 같은 자격증 재도전이 맞는지, 한 단계 쉬운 자격증으로 기초를 먼저 다지는 편이 맞는지 판단해 summary에 한 문장으로 적는다. 불합격한 자격증도 후보에서 빼지 않는다. 합격한 자격증은 다시 추천하지 않는다.
 오늘 날짜: {today}"""
+
+OUTSIDE_PROMPT = """너는 자격증 확인 담당이다. {untrusted}
+[검색 결과]만 보고 '{name}'이(가) 실제로 시행 중인 자격증인지, 주관(시행)기관과 그 기관의 공식 사이트가 무엇인지 판단한다.
+아래 JSON만 출력한다. 검색 결과로 확인되지 않으면 exists를 false로 둔다.
+{{"exists": true, "issuer": "주관기관 이름", "official_source_id": 0, "summary": "어떤 역량을 검증하는 자격인지 1문장"}}
+official_source_id는 주관기관(또는 공식 접수처) 사이트인 검색 결과의 source_id다. 블로그·학원·뉴스는 공식 사이트가 아니다. 없으면 null."""
+
+
+def verify_outside(name: str, llm: LLM | None, search: Search | None) -> tuple[dict | None, str]:
+    """목록 밖 자격증의 경량 확인. (자격증 정보 또는 None, 확인 방식)을 돌려준다."""
+    name = (name or "").strip()[:60]
+    if len(name) < 2:
+        return None, ""
+    known = find_cert(name)
+    if known:
+        return known, "목록" if known["code"] in BY_CODE else "자료집에서 주관기관 확인"
+    if not (llm and search):
+        return None, ""
+    try:
+        hits = search.search(f"{name} 자격증 시험 주관기관 공식 홈페이지 원서접수", max_results=6)
+        if not hits:
+            return None, ""
+        raw = llm.json([
+            {"role": "system", "content": OUTSIDE_PROMPT.format(untrusted=UNTRUSTED, name=name)},
+            {"role": "user", "content": json.dumps({"search_results": [
+                {"source_id": i, "title": h["title"], "url": h["url"], "text": h["content"][:700]} for i, h in enumerate(hits)]},
+                ensure_ascii=False)}], temperature=0.0, max_tokens=500)
+    except (SearchError, LLMError):
+        return None, ""
+    index = raw.get("official_source_id")
+    if raw.get("exists") is not True or not isinstance(index, int) or not 0 <= index < len(hits):
+        return None, ""
+    return external_cert(name, str(raw.get("issuer") or ""), hits[index]["url"], str(raw.get("summary") or "")), \
+        "검색으로 주관기관·공식 사이트 확인"
 
 
 def recommend(profile: dict, llm: LLM | None, today: date, *, exclude: set[str] | None = None,
-              after_pass: str = "") -> dict:
+              after_pass: str = "", search: Search | None = None) -> dict:
     """1순위 + 대안 추천. LLM 실패 시 규칙 기반으로 대체하고 그 사실을 남긴다."""
     exclude = exclude or set()
     notices: list[str] = []
@@ -115,15 +169,23 @@ def recommend(profile: dict, llm: LLM | None, today: date, *, exclude: set[str] 
             raw = llm.json([
                 {"role": "system", "content": RECOMMEND_PROMPT.format(untrusted=UNTRUSTED, today=today.isoformat())},
                 {"role": "user", "content": user}], temperature=0.2)
-            seen = set()
+            seen, outside_used = set(), False
             for item in raw.get("candidates") or []:
                 code = item.get("code") if isinstance(item, dict) else None
-                cert = BY_CODE.get(code)
-                if not cert or code in seen or code in exclude or is_owned(cert, owned):
+                cert, basis = BY_CODE.get(code), ""
+                if not cert and isinstance(item, dict) and item.get("name") and not outside_used:
+                    outside_used = True  # 목록 밖 후보는 1개까지만, 시행 여부를 확인한 뒤에만 넣는다
+                    cert, basis = verify_outside(str(item["name"]), llm, search)
+                    if not cert:
+                        notices.append(f"'{str(item['name'])[:30]}'은(는) 시행 여부와 공식 사이트를 확인하지 못해 후보에서 뺐어요.")
+                if not cert or cert["code"] in seen or cert["code"] in exclude or is_owned(cert, owned):
                     continue
-                seen.add(code)
-                candidates.append({"code": code, "reason": str(item.get("reason") or cert["desc"]),
-                                   "prep_scope": str(item.get("prep_scope") or ""), "caution": str(item.get("caution") or "")})
+                seen.add(cert["code"])
+                entry = {"code": cert["code"], "reason": str(item.get("reason") or cert["desc"]),
+                         "prep_scope": str(item.get("prep_scope") or ""), "caution": str(item.get("caution") or "")}
+                if cert["code"] not in BY_CODE:
+                    entry.update(cert=cert, outside=basis or "경량 확인")
+                candidates.append(entry)
             summary = str(raw.get("summary") or "")
             practice_first = str(raw.get("practice_first") or "")
             mode = "AI 추천"
@@ -136,13 +198,14 @@ def recommend(profile: dict, llm: LLM | None, today: date, *, exclude: set[str] 
             notices.append("AI 키가 설정되지 않아 직무 키워드 규칙으로 추천했어요.")
     candidates = candidates[:3]
     for rank, item in enumerate(candidates, start=1):
-        cert = BY_CODE[item["code"]]
+        cert = BY_CODE.get(item["code"]) or item["cert"]
         item.update(rank=rank, name=cert["name"], issuer=cert["issuer"], official_url=cert["official_url"],
                     restricted=cert["restricted"])
     return {
         "candidates": candidates, "summary": summary, "practice_first": practice_first, "mode": mode,
         "notices": notices, "used": used_info(profile, ["desired_job", "major_experience", "owned", "learning_style",
-                                                         "cost_pref", "weekly_hours", "target_period"]),
+                                                         "cost_pref", "budget", "weekly_hours", "target_period", "english",
+                                                         "extra", "exam_history"]),
         "checked_at": today.isoformat(),
     }
 
@@ -161,6 +224,8 @@ def recommend_markdown(result: dict) -> str:
             f"- 진로 연결 근거: {item['reason']}\n"
             + (f"- 준비 예상 범위: {item['prep_scope']}\n" if item["prep_scope"] else "")
             + (f"- 주의점: {item['caution']}\n" if item["caution"] else "")
+            + (f"- 목록 밖 자격증: {item['outside']}만 한 상태예요. 일정·응시료·응시자격은 \"시험 일정 알려줘\"로 따로 확인해 주세요.\n"
+               if item.get("outside") else "")
             + f"- 공식 사이트: {item['official_url']}")
     if result["practice_first"]:
         out.append(f"💡 솔직히 말하면: {result['practice_first']}")
@@ -211,6 +276,9 @@ def lookup_schedule(cert: dict, llm: LLM | None, search: Search | None, today: d
     info = reference_info(cert["name"])
     if info.get("취득방법"):
         result["reference"] = info["취득방법"][:500]
+    guide = private_guide(cert["name"])
+    if guide:  # 공인민간자격 정보자료집(PDF) — 공식 원문을 못 읽었을 때 참고하는 값
+        result["guide"] = {k: guide[k] for k in ("name", "fee", "eligibility", "validity", "accredited_until", "issuer", "homepage")}
 
     crawled = crawl_official(cert)
     if crawled and crawled["rounds"]:
@@ -333,6 +401,10 @@ def schedule_markdown(result: dict) -> str:
         out.append(status)
     if result["reference"] and not future:
         out.append(f"참고(자료집 기준 2025-12-31, 일정 아님): {result['reference'][:300]}…")
+    if result.get("guide"):
+        g = result["guide"]
+        out.append(f"참고(2025년 공인민간자격 정보자료집 기준 · {g['name']} · 현재 값과 다를 수 있음): 응시료 {g['fee'] or '미확인'} / "
+                   f"응시자격 {g['eligibility'][:120] or '미확인'} / 자격 유효기간 {g['validity'] or '미확인'}")
     links = "\n".join(f"- [{s['title']}]({s['url']})" for s in result["sources"][:4])
     out.append("공식 페이지\n" + (links or f"- {result['official_url']}"))
     return "\n\n".join(out)
@@ -342,14 +414,18 @@ def schedule_markdown(result: dict) -> str:
 PATH_PROMPT = """너는 자격증 학습자료 선별자다. {untrusted}
 [검색 결과]에 근거해 {name} 학습 경로를 만든다. 검색 결과에 없는 강의·교재 이름, 가격, 평점은 만들지 않는다.
 아래 JSON만 출력한다. 모든 항목의 source_ids는 [검색 결과]의 source_id 배열이다(근거가 없으면 항목을 null로).
-{{"basic": {{"lecture": {{"text": "강의 이름과 어디서 보는지", "coverage": "<전체/일부/미확인 중 하나와 짧은 근거>", "free_scope": "<어디까지 무료인지. 근거가 없으면 미확인>", "source_ids": [0]}},
+{{"basic": {{"lecture": {{"text": "강의 이름과 어디서 보는지", "coverage": "<전체/일부/미확인 중 하나와 짧은 근거>", "free_scope": "<어디까지 무료인지. 근거가 없으면 미확인>", "price": "<무료 / 검색 결과에 적힌 가격 그대로 / 가격 확인 필요>", "source_ids": [0]}},
             "past_exam": {{"text": "기출·자료와 공식 여부", "source_ids": [0]}},
-            "book": {{"text": "교재 1권", "source_ids": [0]}},
+            "book": {{"text": "1순위 교재 1권의 이름(출판사)", "price": "<검색 결과에 적힌 가격 그대로 / 가격 확인 필요>", "fit": "<어떤 학습자에게 맞는지 사용자 조건과 연결해 1문장>", "pros": ["<검색 결과에서 확인된 장점>"], "cons": ["<검색 결과에서 확인된 단점·주의점>"], "source_ids": [0]}},
+            "book_alt": {{"text": "대안 교재 1권의 이름(출판사)", "price": "<위와 같음>", "fit": "<어떤 경우에 1순위 대신 이 책을 고르는지 1문장>", "pros": ["<확인된 장점>"], "cons": ["<확인된 단점·주의점>"], "source_ids": [0]}},
             "why": "이 경로를 고른 이유를 사용자 조건과 연결해 1~2문장"}},
   "alt": {{"text": "대안 경로 1개와 고르는 조건", "source_ids": [0]}},
   "pros": [{{"text": "후기에서 보인 장점", "source_ids": [0, 1]}}],
   "cons": [{{"text": "후기에서 보인 단점", "source_ids": [0]}}]}}
 규칙:
+- 교재는 1순위 1권과 대안 1권만 고른다. 교재의 장점·단점은 검색 결과(후기·서점 설명)에 실제로 적힌 내용만 쓰고, 좋은 점만 쓰지 않는다. 확인된 단점이 없으면 cons를 빈 배열로 둔다. 광고 문구나 평점 숫자를 지어내지 않는다.
+- 가격은 검색 결과에 숫자로 적혀 있을 때만 쓴다. 없으면 '가격 확인 필요'라고 쓴다. 사용자 예산이 있으면 그 안에서 고르고, 넘으면 why에 그 사실을 적는다.
+- '기타 사항'·'시험 이력'이 있으면 자료 선택에 반영한다(예: 불합격 때 약했던 단계를 보완하는 자료).
 - < > 안의 설명 문구를 그대로 옮겨 쓰지 않는다. 검색 결과로 확인한 내용만 쓰고, 확인하지 못했으면 '미확인'이라고만 쓴다.
 - 비용 선호가 '완전 무료'면 돈을 내고 사야 하는 것(유료 강의, 기본서·수험서·문제집, '노랭이'·'노란책' 같은 시판 교재)은 basic·alt·why 어디에도 쓰지 않는다. pros·cons의 후기 요약에서만 언급할 수 있다. '유료 강의 허용'·'시간 절약 우선'일 때만 유료 후보를 넣고 무료 대안을 함께 둔다.
 - 일부만 무료인 강의를 전체 무료라고 쓰지 않는다. 불법 복제·무단 공유 자료는 제외한다.
@@ -372,7 +448,8 @@ def _paid_mentions(raw: dict) -> list[str]:
 
 def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None, today: date) -> str:
     cost = profile.get("cost_pref") or ""
-    head = [f"**{cert['name']} 학습 경로** — 사용한 정보: {used_info(profile, ['learning_style', 'cost_pref', 'weekly_hours'])}"]
+    head = [f"**{cert['name']} 학습 경로** — 사용한 정보: "
+            f"{used_info(profile, ['learning_style', 'cost_pref', 'budget', 'weekly_hours', 'extra', 'exam_history'])}"]
     if not cost:
         head.append("비용 선호가 아직 없어 '강의 무료·교재 구매' 기준으로 찾았어요. '프로필' 탭에서 바꾸면 다시 계산해요.")
     if search is None:
@@ -382,6 +459,10 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
             "일반 순서: 개념(40%) → 단원별 문제풀이(25%) → 기출(25%) → 모의고사·복습(10%). \"학습 계획 세워줘\"로 주차 계획을 만들 수 있어요."])
     free = "무료 " if cost in ("", "완전 무료", "강의 무료·교재 구매") else ""
     queries = [(f"{cert['name']} {free}강의 독학 후기", None), (f"{cert['name']} 교재 추천 후기 {today.year}", None)]
+    if cost != "완전 무료":
+        queries.append((f"{cert['name']} 교재 비교 장단점 가격", None))
+    if cost in ("유료 강의 허용", "시간 절약 우선"):
+        queries.append((f"{cert['name']} 인강 수강료 가격 후기", None))
     if cert.get("domain"):
         queries.append((f"{cert['name']} 기출문제 공개", [cert["domain"]]))
     hits, seen, failed = [], set(), 0
@@ -393,7 +474,7 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
                     hits.append(hit)
         except SearchError:
             failed += 1
-    hits = hits[:10]
+    hits = hits[:14]
     links = "\n".join(f"{i + 1}. [{h['title']}]({h['url']})" for i, h in enumerate(hits))
     if not hits:
         return "\n\n".join(head + ["⛔ 못 함: 검색 결과를 가져오지 못했어요. 잠시 뒤 다시 시도해 주세요.", f"공식 사이트: {cert['official_url']}"])
@@ -404,7 +485,7 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
         raw = llm.json([
             {"role": "system", "content": PATH_PROMPT.format(untrusted=UNTRUSTED, name=cert["name"], today=today.isoformat())},
             {"role": "user", "content": json.dumps({"user_profile": profile_text(profile), "search_results": payload}, ensure_ascii=False)}],
-            temperature=0.1, max_tokens=2000)
+            temperature=0.1, max_tokens=3200)
     except LLMError:
         return "\n\n".join(head + ["⛔ 못 함: 자료 요약에 실패했어요. 아래 검색 결과를 직접 확인해 주세요.", links])
 
@@ -439,19 +520,52 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
         return "미확인" if not text or "모르면" in text or text.startswith("<") or "여부(" in text else text
 
     lecture = cite(basic.get("lecture"))
+    def price_of(item, ids: list[int]) -> str:
+        """가격은 인용한 출처 본문에 같은 숫자가 있을 때만 그대로 보여 준다."""
+        text = known(item.get("price") if isinstance(item, dict) else "")
+        if re.search(r"\d", text):
+            body = " ".join(hits[i]["content"] + " " + hits[i]["title"] for i in ids)
+            return text if _digits_in_text(text, body) else "가격 확인 필요"
+        return "무료" if "무료" in text else "가격 확인 필요"
+
+    def facts(values) -> list[str]:
+        return [str(v).strip() for v in values or [] if isinstance(v, str) and v.strip() and not v.strip().startswith("<")][:3]
+
+    costs = []
     if lecture:
-        lines.append(f"- 강의: {lecture[0]} {refs(lecture[1])}\n  - 전체 범위 cover: {known(basic['lecture'].get('coverage'))}"
+        lecture_price = price_of(basic["lecture"], lecture[1])
+        costs.append(f"강의 {lecture_price}")
+        lines.append(f"- 강의: {lecture[0]} {refs(lecture[1])}\n  - 가격: {lecture_price} / 전체 범위 cover: {known(basic['lecture'].get('coverage'))}"
                      f" / 무료 범위·유료 전환: {known(basic['lecture'].get('free_scope'))} / 확인 방식: 검색 원문 요약, {today.isoformat()}")
     else:
         lines.append("- 강의: 후보 미확인 — 근거가 확인된 강의를 찾지 못했어요.")
-    for key, label in (("past_exam", "기출·자료"), ("book", "교재")):
-        item = cite(basic.get(key))
-        if key == "book" and cost == "완전 무료":
-            lines.append("- 교재: 완전 무료 기준이라 교재 구매는 넣지 않았어요.")
-        else:
-            if item and cost == "완전 무료" and PAID_WORDS.search(item[0]):
-                item = None
-            lines.append(f"- {label}: {item[0]} {refs(item[1])}" if item else f"- {label}: 미확인")
+    item = cite(basic.get("past_exam"))
+    if item and cost == "완전 무료" and PAID_WORDS.search(item[0]):
+        item = None
+    lines.append(f"- 기출·자료: {item[0]} {refs(item[1])}" if item else "- 기출·자료: 미확인")
+    if cost == "완전 무료":
+        lines.append("- 교재: 완전 무료 기준이라 교재 구매는 넣지 않았어요.")
+        costs.append("교재 0원(구매 안 함)")
+    else:
+        for key, label in (("book", "교재(1순위)"), ("book_alt", "교재(대안)")):
+            source = basic.get(key)
+            item = cite(source)
+            if not item:
+                lines.append(f"- {label}: 미확인 — 근거가 확인된 교재를 찾지 못했어요.")
+                continue
+            book_price = price_of(source, item[1])
+            if key == "book":
+                costs.append(f"교재 {book_price}")
+            pros, cons = facts(source.get("pros")), facts(source.get("cons"))
+            lines.append(
+                f"- {label}: {item[0]} {refs(item[1])}\n  - 가격: {book_price}"
+                + (f" / 맞는 경우: {known(source.get('fit'))}" if known(source.get("fit")) != "미확인" else "")
+                + f"\n  - 장점: {'; '.join(pros) if pros else '확인된 내용 없음'}"
+                + f"\n  - 단점·주의점: {'; '.join(cons) if cons else '검색한 글에서는 확인하지 못했어요(없다는 뜻은 아니에요)'}")
+    budget = (profile.get("budget") or "").strip()
+    lines.append("- 예상 비용(확인된 가격만): " + " · ".join(costs)
+                 + (f" / 입력한 예산: {budget}" if budget else "")
+                 + " — '가격 확인 필요' 항목은 구매 전에 판매처에서 확인해 주세요.")
     out = head + ["**기본 경로**\n" + "\n".join(lines)]
     strict = cost == "완전 무료"
     why = str(basic.get("why") or "")
@@ -581,10 +695,13 @@ def validity_review(assets: list[dict], today: date) -> list[dict]:
             except ValueError:
                 status, note = "확인 필요", "만료일 형식을 확인해 주세요(YYYY-MM-DD)"
         accredited = private_accreditation(name)
+        guide_row = private_guide(name)
         ref = ""
         if accredited:
             a = accredited[0]
             ref = f"자료집 기준(2026-08-26): {a['name']} 공인유효기간 {a['valid_from']} ~ {a['valid_to']} ({a['manager']})"
+        if guide_row and guide_row.get("validity"):
+            ref = (ref + " · " if ref else "") + f"2025년 정보자료집 기준: {guide_row['name']} 자격 유효기간 {guide_row['validity']}"
         rows.append({"자산": name, "취득일": asset.get("acquired") or "미입력", "만료일": expires or "미입력",
                      "상태": status, "검토": note, "참고": ref})
     return rows

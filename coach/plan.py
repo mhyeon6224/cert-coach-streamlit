@@ -76,7 +76,7 @@ def build_plan(today: date, exam_date: date, weekly_hours: float, style: str = "
         "done": False, "memo": "",
     })
     return {
-        "rows": rows, "created": today.isoformat(), "exam_date": exam_date.isoformat(),
+        "rows": rows, "created": today.isoformat(), "last_progress": today.isoformat(), "exam_date": exam_date.isoformat(),
         "weekly_hours": weekly_hours, "weights": weights, "history": [],
         "weeks": max(1, round(days_left / 7)), "total_hours": sum(r["hours"] for r in rows),
     }
@@ -119,6 +119,8 @@ def checkin(plan: dict, today: date, weekly_hours: float, study_days_per_week: i
     per_day = max(0.25, weekly_hours / max(1, study_days_per_week))
     delay_days = round(delay_hours / per_day, 1)
     todo = (overdue + current)[:3] or upcoming[:1]
+    # 마지막으로 완료 체크를 한 날부터 며칠이 지났는지(체크가 한 번도 없으면 계획을 만든 날부터)
+    idle_days = max(0, (today - d(plan.get("last_progress") or plan["created"])).days)
 
     deadlines = []
     state = target.get("state", "준비중")
@@ -137,7 +139,7 @@ def checkin(plan: dict, today: date, weekly_hours: float, study_days_per_week: i
     return {
         "today": today.isoformat(), "todo": todo, "delay_hours": delay_hours, "delay_days": delay_days,
         "needs_readjust": bool(overdue) and (delay_days >= 3 or delay_hours > weekly_hours * 0.5),
-        "suggest_shrink": delay_days >= 3,
+        "idle_days": idle_days, "suggest_shrink": idle_days >= 3 and bool(overdue or current),
         "nearest": {"date": nearest[0].isoformat(), "label": nearest[1], "dday": (nearest[0] - today).days} if nearest else None,
         "current_week": current_week, **progress(plan),
     }
@@ -196,6 +198,11 @@ def readjust(plan: dict, today: date, weekly_hours: float, reason: str) -> dict:
     return {"status": "done", "message": f"시험일은 그대로 두고 미완료 {len(pending)}개 항목을 다시 배분했어요. ({stamp})"}
 
 
+def mark_progress(plan: dict, today: date) -> None:
+    """완료 체크가 새로 생긴 날을 기록한다('3일 연속 미완료' 판단에 쓴다)."""
+    plan["last_progress"] = d(today).isoformat()
+
+
 def weakest_phase(plan: dict) -> tuple[str, int] | None:
     """불합격 반영: 완료율이 가장 낮았던 단계를 사실로만 돌려준다."""
     by_phase = {p: v for p, v in progress(plan)["by_phase"].items() if p in PHASES}
@@ -224,7 +231,7 @@ def briefing_text(info: dict, cert_name: str) -> str:
     if info["needs_readjust"]:
         lines.append("⚠️ 지연이 재조정 기준(3일 이상 또는 주당 시간의 50% 초과)을 넘었어요. 학습 공간에서 재조정할 수 있어요.")
     if info["suggest_shrink"]:
-        lines.append("계획을 줄이고 싶으면 채팅에서 '계획 줄여줘'라고 말해 주세요.")
+        lines.append(f"{info.get('idle_days', 3)}일째 완료 체크가 없어요. 계획을 줄이고 싶으면 채팅에서 '계획 줄여줘'라고 말해 주세요.")
     return "\n\n".join(lines)
 
 
