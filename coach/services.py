@@ -38,22 +38,31 @@ class LLM:
 
     def chat(self, messages: list[dict], *, temperature: float = 0.2, max_tokens: int = 1800,
              json_mode: bool = False) -> str:
-        body = {"model": self.model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
-        if json_mode:
-            body["response_format"] = {"type": "json_object"}
-        try:
-            response = requests.post(
-                f"{self.base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-                json=body, timeout=60,
-            )
-            if response.status_code >= 400:
-                raise LLMError(f"LLM 응답 오류 (HTTP {response.status_code})")
-            return response.json()["choices"][0]["message"]["content"] or ""
-        except LLMError:
-            raise
-        except Exception as error:  # 네트워크·형식 오류. 키가 섞일 수 있는 원문은 싣지 않는다.
-            raise LLMError(f"LLM 호출 실패 ({type(error).__name__})") from None
+        # LLM_MODEL에 쉼표로 여러 모델을 적으면, 앞 모델이 혼잡(429·5xx)하거나 응답이 늦을 때 다음 모델로 넘어간다.
+        models = [m.strip() for m in self.model.split(",") if m.strip()]
+        failure = LLMError("LLM 모델이 설정되지 않았어요")
+        for index, model in enumerate(models):
+            body = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
+            if json_mode:
+                body["response_format"] = {"type": "json_object"}
+            last = index == len(models) - 1
+            try:
+                response = requests.post(
+                    f"{self.base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+                    json=body, timeout=60 if last else 25,
+                )
+                if response.status_code >= 400:
+                    failure = LLMError(f"LLM 응답 오류 (HTTP {response.status_code})")
+                    if response.status_code in (404, 408, 429) or response.status_code >= 500:
+                        continue
+                    raise failure
+                return response.json()["choices"][0]["message"]["content"] or ""
+            except LLMError:
+                raise
+            except Exception as error:  # 네트워크·형식 오류. 키가 섞일 수 있는 원문은 싣지 않는다.
+                failure = LLMError(f"LLM 호출 실패 ({type(error).__name__})")
+        raise failure from None
 
     def json(self, messages: list[dict], **kwargs) -> dict:
         text = self.chat(messages, json_mode=True, **kwargs)

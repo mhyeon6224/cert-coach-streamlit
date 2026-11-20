@@ -342,7 +342,7 @@ def schedule_markdown(result: dict) -> str:
 PATH_PROMPT = """너는 자격증 학습자료 선별자다. {untrusted}
 [검색 결과]에 근거해 {name} 학습 경로를 만든다. 검색 결과에 없는 강의·교재 이름, 가격, 평점은 만들지 않는다.
 아래 JSON만 출력한다. 모든 항목의 source_ids는 [검색 결과]의 source_id 배열이다(근거가 없으면 항목을 null로).
-{{"basic": {{"lecture": {{"text": "강의 이름과 어디서 보는지", "coverage": "전체 범위 cover 여부(모르면 '미확인')", "free_scope": "무료 범위와 유료 전환 지점(모르면 '미확인')", "source_ids": [0]}},
+{{"basic": {{"lecture": {{"text": "강의 이름과 어디서 보는지", "coverage": "<전체/일부/미확인 중 하나와 짧은 근거>", "free_scope": "<어디까지 무료인지. 근거가 없으면 미확인>", "source_ids": [0]}},
             "past_exam": {{"text": "기출·자료와 공식 여부", "source_ids": [0]}},
             "book": {{"text": "교재 1권", "source_ids": [0]}},
             "why": "이 경로를 고른 이유를 사용자 조건과 연결해 1~2문장"}},
@@ -350,7 +350,8 @@ PATH_PROMPT = """너는 자격증 학습자료 선별자다. {untrusted}
   "pros": [{{"text": "후기에서 보인 장점", "source_ids": [0, 1]}}],
   "cons": [{{"text": "후기에서 보인 단점", "source_ids": [0]}}]}}
 규칙:
-- 비용 선호가 '완전 무료'면 유료 강의·교재 구매를 기본 경로에 넣지 않는다. '유료 강의 허용'·'시간 절약 우선'일 때만 유료 후보를 넣고 무료 대안을 함께 둔다.
+- < > 안의 설명 문구를 그대로 옮겨 쓰지 않는다. 검색 결과로 확인한 내용만 쓰고, 확인하지 못했으면 '미확인'이라고만 쓴다.
+- 비용 선호가 '완전 무료'면 유료 강의·교재(문제집 포함) 구매를 기본 경로·대안 경로·선택 이유 어디에도 넣지 않는다. '유료 강의 허용'·'시간 절약 우선'일 때만 유료 후보를 넣고 무료 대안을 함께 둔다.
 - 일부만 무료인 강의를 전체 무료라고 쓰지 않는다. 불법 복제·무단 공유 자료는 제외한다.
 - 합격·취업을 보장하는 표현을 쓰지 않는다.
 오늘 날짜: {today}"""
@@ -405,10 +406,15 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
 
     basic = raw.get("basic") if isinstance(raw.get("basic"), dict) else {}
     lines = []
+
+    def known(value) -> str:  # 양식의 설명 문구를 그대로 돌려준 경우는 '미확인'으로 본다
+        text = str(value or "").strip()
+        return "미확인" if not text or "모르면" in text or text.startswith("<") or "여부(" in text else text
+
     lecture = cite(basic.get("lecture"))
     if lecture:
-        lines.append(f"- 강의: {lecture[0]} {refs(lecture[1])}\n  - 전체 범위 cover: {basic['lecture'].get('coverage') or '미확인'}"
-                     f" / 무료 범위·유료 전환: {basic['lecture'].get('free_scope') or '미확인'} / 확인 방식: 검색 원문 요약, {today.isoformat()}")
+        lines.append(f"- 강의: {lecture[0]} {refs(lecture[1])}\n  - 전체 범위 cover: {known(basic['lecture'].get('coverage'))}"
+                     f" / 무료 범위·유료 전환: {known(basic['lecture'].get('free_scope'))} / 확인 방식: 검색 원문 요약, {today.isoformat()}")
     else:
         lines.append("- 강의: 후보 미확인 — 근거가 확인된 강의를 찾지 못했어요.")
     for key, label in (("past_exam", "기출·자료"), ("book", "교재")):

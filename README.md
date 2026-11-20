@@ -39,7 +39,7 @@ streamlit run app.py
 | --- | --- |
 | `GROQ_API_KEY` | AI 모델 (기본 Groq, OpenAI 호환) |
 | `TAVILY_API_KEY` | 공식 일정·학습자료 웹 검색 |
-| `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | Groq 대신 다른 OpenAI 호환 모델(예: Upstage Solar)을 쓸 때 |
+| `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | Groq 대신 다른 OpenAI 호환 모델(예: Google Gemini)을 쓸 때. `LLM_MODEL`은 쉼표로 여러 개를 적으면 앞 모델이 혼잡할 때 다음 모델로 넘어감 |
 | `APP_PASSWORD` | 접속 비밀번호 (기본 `pnumis`) |
 | `SUPABASE_URL` / `SUPABASE_KEY` | 계정·학습 상태 저장 (아래 참고) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | 사용자별 Google Calendar 연동 |
