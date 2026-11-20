@@ -290,6 +290,20 @@ img.cc-avatar {{ object-fit: cover; background: #fff; border: 1px solid {LINE}; 
 header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stToolbar"] > div {{ pointer-events: none !important; }}
 [data-testid="stExpandSidebarButton"], [data-testid="stExpandSidebarButton"] *, [data-testid="stSidebarCollapsedControl"],
 [data-testid="stSidebarCollapsedControl"] * {{ pointer-events: auto !important; }}
+.cc-chips {{ display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }}
+.cc-chips .cc-badge {{ font-size: 13px; padding: 5px 10px; white-space: normal; }}
+.cc-steps {{ display: grid; gap: 6px; margin: 4px 0; }}
+.cc-step {{ display: flex; gap: 10px; align-items: flex-start; border: 1px solid {LINE}; border-radius: {R}; padding: 10px 12px; background: #fff; }}
+.cc-step .n {{ flex: 0 0 22px; height: 22px; border-radius: {R}; background: {BLUE}; color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }}
+.cc-step .t {{ font-size: 14px; line-height: 1.6; color: {INK}; }}
+.cc-pair {{ border: 1px solid {LINE}; border-radius: {R}; margin: 6px 0; background: #fff; }}
+.cc-pair .t {{ font-size: 15px; font-weight: 800; color: {INK}; padding: 9px 12px; border-bottom: 1px solid {LINE}; background: {SOFT}; }}
+.cc-pair .g {{ display: grid; grid-template-columns: 1fr 1fr; }}
+.cc-pair .c {{ padding: 10px 12px; font-size: 14px; line-height: 1.6; color: {INK}; }}
+.cc-pair .c.limit {{ border-left: 1px solid {LINE}; }}
+.cc-pair .c .h {{ font-size: 12px; font-weight: 700; margin-bottom: 3px; }}
+.cc-pair .c.good .h {{ color: #1f8a4c; }} .cc-pair .c.limit .h {{ color: #b7791f; }}
+@media (max-width: 760px) {{ .cc-pair .g {{ grid-template-columns: 1fr; }} .cc-pair .c.limit {{ border-left: 0; border-top: 1px solid {LINE}; }} }}
 </style>
 """
 
@@ -383,6 +397,27 @@ def box(text: str, kind: str = "", head: str = "") -> None:
     """부드러운 색 상자. kind: "" | blue | green | red"""
     head_html = f'<div class="h">{escape(head)}</div>' if head else ""
     st.markdown(f'<div class="cc-box {kind}">{head_html}{escape(text)}</div>', unsafe_allow_html=True)
+
+
+def chips(items: list[tuple[str, str]]) -> None:
+    """배지 묶음을 한 줄로 흐르게 그린다. items: (글자, 종류)"""
+    st.markdown(f'<div class="cc-chips">{badges(items)}</div>', unsafe_allow_html=True)
+
+
+def steps(items: list[str]) -> None:
+    """번호가 붙은 할 일 목록."""
+    rows = "".join(f'<div class="cc-step"><span class="n">{i}</span><span class="t">{escape(text)}</span></div>'
+                   for i, text in enumerate(items, 1))
+    st.markdown(f'<div class="cc-steps">{rows}</div>', unsafe_allow_html=True)
+
+
+def pair_card(title: str, good: str, limit: str, good_head: str = "닿는 지점", limit_head: str = "한계") -> None:
+    """제목 아래에 '좋은 점 / 한계'를 나란히 놓는 카드."""
+    st.markdown(
+        f'<div class="cc-pair"><div class="t">{escape(title)}</div><div class="g">'
+        f'<div class="c good"><div class="h">{escape(good_head)}</div>{escape(good)}</div>'
+        f'<div class="c limit"><div class="h">{escape(limit_head)}</div>{escape(limit)}</div></div></div>',
+        unsafe_allow_html=True)
 
 
 def kv(pairs: list[tuple[str, str]]) -> None:

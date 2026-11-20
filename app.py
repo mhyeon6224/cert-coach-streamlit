@@ -569,10 +569,29 @@ with tab_rec:
     if S.get("guideline"):
         with st.container(border=True, key="card4"):
             ui.section("취업 가이드라인", "목표 직무·관심 공고가 있을 때만")
-            st.markdown(S["guideline"])
-            if (S.get("guideline_detail") or {}).get("sources"):
+            guide = S.get("guideline_detail") or {}
+            if guide.get("job_summary") or guide.get("cert_links"):
+                # 구조화된 결과가 있으면 카드·표로 보여 준다
+                ui.box(guide.get("job_summary") or "미확인", "blue", f"직무 요약 · {guide['job']}" if guide.get("job") else "직무 요약")
+                skills = guide.get("competencies") or []
+                if skills:
+                    ui.label("공고에서 요구하는 역량")
+                    ui.chips([(c["name"], "good" if len(c["sources"]) >= 2 else "warn") for c in skills])
+                    st.caption("초록: 자료 2건 이상에서 반복된 요건 · 노랑: 한 번만 확인된 요건(참고만)")
+                if guide.get("cert_links"):
+                    ui.label("자격증이 닿는 지점과 한계")
+                    for link in guide["cert_links"]:
+                        ui.pair_card(link["cert"], link["touches"], link["limits"])
+                if guide.get("portfolio"):
+                    ui.label("포트폴리오·경험으로 채울 것")
+                    ui.steps(guide["portfolio"])
+                ui.kv([("근거 범위", guide.get("origin", "")), ("확인 날짜", guide.get("checked_at", ""))])
+                st.caption("공고마다 필수/우대가 달라요. 자격증이 취업을 보장하지 않으며, 시험 일정·응시자격은 공식 원문으로 따로 확인해야 해요.")
+            else:
+                st.markdown(S["guideline"])
+            if guide.get("sources"):
                 if st.button("분석한 자료 보기", icon=":material/fact_check:", key="guide_sources"):
-                    guideline_dialog(S["guideline_detail"])
+                    guideline_dialog(guide)
 
 # ------------------------------------------------------------------ 일정
 with tab_sched, st.container(border=True, key="card5"):

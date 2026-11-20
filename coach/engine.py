@@ -550,6 +550,13 @@ def job_guideline(profile: dict, cert_names: list[str], llm: LLM | None, search:
     portfolio = [str(p) for p in raw.get("portfolio") or [] if p]
     if portfolio:
         out.append("- 포트폴리오·경험 방향: " + " / ".join(portfolio[:3]))
+    if detail is not None:  # 화면에서 카드·표로 그릴 수 있게 구조 그대로도 담는다
+        detail.update({
+            "job": job, "job_summary": str(raw.get("job_summary") or ""),
+            "cert_links": [{"cert": str(i["cert"]), "touches": str(i.get("touches") or "미확인"),
+                            "limits": str(i.get("not_touches") or "미확인")}
+                           for i in raw.get("cert_links") or [] if isinstance(i, dict) and i.get("cert")],
+            "portfolio": portfolio[:3]})
     links = ", ".join(f"[{s['title'][:30]}]({s['url']})" for s in sources if s["url"])
     out.append(f"- 근거 범위: {origin} · 확인 날짜 {today.isoformat()}" + (f" · 참고 공고: {links}" if links else ""))
     out.append("- 제한: 공고마다 필수/우대가 달라요. 시험 일정·응시자격은 공식 원문으로 따로 확인해야 해요.")
