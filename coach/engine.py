@@ -14,7 +14,7 @@ from datetime import date
 from .catalog import (BY_CODE, CATALOG, external_cert, find_cert, is_owned, job_tags, private_accreditation,
                       private_guide, reference_info)
 from .crawl import book_price, book_search_url, crawl_official
-from .services import LLM, LLMError, Search, SearchError, host_matches
+from .services import LLM, LLMError, Search, SearchError, host_matches, site_label
 
 COST_OPTIONS = ["완전 무료", "강의 무료·교재 구매", "유료 강의 허용", "시간 절약 우선"]
 STYLE_OPTIONS = ["개념 강의형", "문제풀이형", "독학형", "혼합형"]
@@ -457,9 +457,13 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
     """강의·교재·기출 학습 경로. detail(dict)을 넘기면 화면에서 카드·표로 그릴 수 있게 같은 내용을 구조로도 담는다."""
     cards: list[dict] = []
 
+    def src(i: int) -> list:
+        """근거 링크 한 건: [번호, 주소, 어떤 곳인지(유튜브·티스토리 블로그 등)]."""
+        return [i + 1, hits[i]["url"], site_label(hits[i]["url"], cert.get("domain") or "")]
+
     def card(kind: str, name: str, ids: list[int] | None = None, rows: list[tuple[str, str]] | None = None,
              pros: list[str] | None = None, cons: list[str] | None = None) -> None:
-        cards.append({"kind": kind, "name": name, "sources": [[i + 1, hits[i]["url"]] for i in ids or []],
+        cards.append({"kind": kind, "name": name, "sources": [src(i) for i in ids or []],
                       "rows": [[k, v] for k, v in rows or [] if v], "pros": pros or [], "cons": cons or []})
 
     cost = profile.get("cost_pref") or ""
@@ -525,7 +529,7 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
         return (str(item["text"]), ids) if ids else None
 
     def refs(ids: list[int]) -> str:
-        return " ".join(f"[[{i + 1}]]({hits[i]['url']})" for i in ids)
+        return " ".join(f"[[{i + 1} {src(i)[2]}]]({hits[i]['url']})" for i in ids)
 
     basic = raw.get("basic") if isinstance(raw.get("basic"), dict) else {}
     lines = []
@@ -708,11 +712,11 @@ def study_path(cert: dict, profile: dict, llm: LLM | None, search: Search | None
             if cited:
                 (repeated if len(cited[1]) >= 2 else single).append(f"- {label}: {cited[0]} {refs(cited[1])}")
                 reviews.append({"kind": label, "text": cited[0], "repeated": len(cited[1]) >= 2,
-                                "sources": [[i + 1, hits[i]["url"]] for i in cited[1]]})
+                                "sources": [src(i) for i in cited[1]]})
     if detail is not None:
         detail.update({
             "cards": cards, "costs": costs, "budget": budget, "why": why, "reviews": reviews,
-            "alt": {"text": alt[0], "sources": [[i + 1, hits[i]["url"]] for i in alt[1]]} if alt else None,
+            "alt": {"text": alt[0], "sources": [src(i) for i in alt[1]]} if alt else None,
             "scope": f"{len(hits)}개 페이지, {today.isoformat()} 확인" + (" · 일부 검색 실패" if failed else ""),
             "used": used_info(profile, ["learning_style", "cost_pref", "budget", "weekly_hours", "extra", "exam_history"])})
     review = ["##### 후기 근거"]
@@ -844,6 +848,7 @@ CHAT_PROMPT = """너는 '자격증 패스 코치'다. 처음 자격증을 준비
 - 한국어로 8줄 이내로 답한다. 자료를 나열하지 말고 다음 행동 1~3개로 끝낸다.
 - 시험 일정·응시료·응시자격·합격률·특정 강의/교재 이름 같은 사실은 말하지 않는다(확인 도구가 따로 있다). 필요하면 "시험 일정 알려줘"처럼 물어보라고 안내한다.
 - 합격·취업 보장 표현 금지. 사용자가 말하지 않은 조건을 지어내지 않는다.
+- 너는 아무것도 저장하거나 바꾸지 못한다. "선택하셨군요", "저장했어요", "목표를 바꿨어요"처럼 무언가 처리된 것처럼 말하지 않는다. 목표 자격증을 정하려는 말이면 "OOO로 준비할래"라고 자격증 이름을 넣어 말해 달라고 안내한다.
 오늘 날짜: {today}"""
 
 HELP_TEXT = (

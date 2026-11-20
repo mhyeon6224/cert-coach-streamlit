@@ -925,9 +925,36 @@ with tab_space:
                     st.markdown(found["text"])
                 st.caption(f"{found['at']} 기준 · 가격·무료 범위는 바뀔 수 있으니 구매 전에 원문을 확인해 주세요.")
             ui.label("기본 학습 순서")
-            ui.table(["단계", "비중", "하는 일"], [
-                ["개념", "40%", "강의·교재로 전체 범위 한 번 보기"], ["문제풀이", "25%", "단원별 문제 + 틀린 개념 다시 보기"],
-                ["기출", "25%", "기출문제 회차 풀이 + 오답 정리"], ["모의·복습", "10%", "실전 모의고사, 시험 직전 3일은 복습만"]])
+            _custom = planner.valid_weights(P.get("phase_weights"))
+            _auto = planner.weights_for(P["learning_style"] or "", S.get("boost_phase"))
+            _now = _custom or _auto
+            st.caption("단계별 비중을 직접 바꿀 수 있어요. '비중(%)' 칸을 눌러 숫자를 고치고 저장하면, 다음에 만드는 주차별 계획부터 이 비중으로 나눠요. "
+                       + ("지금은 직접 정한 비중을 쓰고 있어요." if _custom else "지금은 학습 방식에 맞춘 기본값이에요."))
+            _does = {"개념": "강의·교재로 전체 범위 한 번 보기", "문제풀이": "단원별 문제 + 틀린 개념 다시 보기",
+                     "기출": "기출문제 회차 풀이 + 오답 정리", "모의고사·복습": "실전 모의고사 + 취약 단원 복습 (시험 직전 3일은 따로 복습)"}
+            _edited = st.data_editor(
+                pd.DataFrame([{"단계": p, "비중(%)": int(_now[p]), "하는 일": _does[p]} for p in planner.PHASES]),
+                hide_index=True, use_container_width=True, disabled=["단계", "하는 일"], key="weights_editor",
+                column_config={"비중(%)": st.column_config.NumberColumn("비중(%)", min_value=0, max_value=100, step=5, format="%d")})
+            _new = {r["단계"]: int(r["비중(%)"] or 0) for r in _edited.to_dict("records")}
+            _sum = sum(_new.values())
+            w1, w2, w3 = st.columns([1.2, 1.2, 2])
+            if w1.button("이 비중으로 저장", type="primary", use_container_width=True, key="weights_save"):
+                if _sum != 100:
+                    st.error(f"비중의 합이 100이 되어야 해요. 지금은 {_sum}이에요.")
+                else:
+                    P["phase_weights"] = _new
+                    S["plan_preview"] = None
+                    st.session_state["flash"] = ("단계별 비중을 저장했어요: " + " / ".join(f"{k} {v}%" for k, v in _new.items())
+                                                 + (" 이미 저장된 계획은 그대로예요. 새 비중을 쓰려면 '계획 삭제' 뒤 다시 '계획 미리보기'를 눌러 주세요."
+                                                    if S.get("plan") else ""))
+                    st.rerun()
+            if w2.button("기본값으로 되돌리기", use_container_width=True, key="weights_reset", disabled=not _custom):
+                P["phase_weights"] = None
+                S["plan_preview"] = None
+                st.session_state.pop("weights_editor", None)
+                st.rerun()
+            w3.caption(f"합계 {_sum}%" + ("" if _sum == 100 else " — 100%가 되어야 저장돼요"))
 
 # ------------------------------------------------------------------ 프로필
 with tab_profile:

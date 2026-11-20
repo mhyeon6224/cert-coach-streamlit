@@ -148,3 +148,28 @@ def build_services() -> tuple[LLM | None, Search | None]:
         except Exception:
             search = None
     return llm, search
+
+
+SITE_NAMES = [
+    ("youtube.com", "유튜브"), ("youtu.be", "유튜브"), ("tistory.com", "티스토리 블로그"), ("blog.naver.com", "네이버 블로그"),
+    ("cafe.naver.com", "네이버 카페"), ("post.naver.com", "네이버 포스트"), ("kin.naver.com", "네이버 지식iN"), ("brunch.co.kr", "브런치"),
+    ("velog.io", "벨로그"), ("yes24.com", "예스24"), ("aladin.co.kr", "알라딘"), ("kyobobook.co.kr", "교보문고"),
+    ("inflearn.com", "인프런"), ("namu.wiki", "나무위키"), ("dcinside.com", "디시인사이드"), ("github.com", "깃허브"),
+    ("github.io", "개인 블로그"), ("medium.com", "미디엄"), ("linkareer.com", "링커리어"), ("jobkorea.co.kr", "잡코리아"),
+    ("saramin.co.kr", "사람인"), ("wanted.co.kr", "원티드"), ("dataq.or.kr", "데이터자격검정(공식)"), ("q-net.or.kr", "큐넷(공식)"),
+    ("kacpta.or.kr", "한국세무사회(공식)"), ("eduwill.net", "에듀윌"), ("hackers.com", "해커스"), ("sdedu.co.kr", "시대에듀"),
+]
+
+
+def site_label(url: str, official_domain: str = "") -> str:
+    """근거 링크가 어떤 곳인지 짧은 이름으로 알려 준다(예: 유튜브, 티스토리 블로그). 모르는 곳은 주소의 사이트 이름을 그대로 쓴다."""
+    host = (urlsplit(str(url)).hostname or "").lower()
+    host = re.sub(r"^(?:www|m|mobile)\.", "", host)
+    if not host:
+        return "출처"
+    if official_domain and (host == official_domain or host.endswith("." + official_domain)):
+        return "공식 사이트"
+    for domain, name in SITE_NAMES:
+        if host == domain or host.endswith("." + domain):
+            return name
+    return host

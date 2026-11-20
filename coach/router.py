@@ -89,6 +89,9 @@ profile은 사용자가 이 문장에서 **직접 말한 값만** 채운다(나�
 현재 대기 중인 질문: {pending}"""
 
 
+PICK = re.compile(r"(?:\d\s*순위|대안\s*\d?|[첫두세]\s*번째)\s*(?:자격증)?\s*(?:으로|로|를|을)?\s*(?:준비|할래|할게|갈게|정할|정했|시작|선택|골랐|고를)")
+
+
 def _keyword_intent(text: str) -> str:
     rules = [
         (r"불합격|떨어졌|탈락", "failed"), (r"합격했|붙었|땄어|땄다|취득했|취득 완료", "passed"),
@@ -149,6 +152,12 @@ def interpret(message: str, state: dict, llm: LLM | None) -> tuple[str, dict | N
             intent = None
     if intent is None:
         intent, updates = _keyword_intent(message), _keyword_profile(message)
+    # 분류기가 '그 밖의 대화'로 넘겼어도 문장에 기능을 가리키는 말이 뚜렷하면 그 기능으로 처리한다.
+    # (예: "대안으로 준비할래"가 잡담으로 넘어가 목표가 바뀌지 않던 문제)
+    if PICK.search(message) and intent not in ("schedule", "prepare", "plan"):
+        intent = "decide"
+    elif intent == "general" and _keyword_intent(message) == "decide":
+        intent = "decide"
     cert = find_cert(message) or (find_cert(cert_name) if cert_name else None)
     return intent, cert, updates
 
@@ -193,6 +202,8 @@ def _resolve_cert(state: dict, cert: dict | None, message: str) -> dict | None:
     recs = (state.get("recommendations") or {}).get("candidates") or []
     if recs and re.search(r"1\s*순위|첫\s*번째", message):
         return cert_from_item(recs[0])
+    if len(recs) > 2 and re.search(r"대안\s*2|3\s*순위|세\s*번째", message):
+        return cert_from_item(recs[2])
     if len(recs) > 1 and re.search(r"대안|2\s*순위|두\s*번째", message):
         return cert_from_item(recs[1])
     if state["target"].get("code"):
@@ -227,13 +238,14 @@ def do_recommend(state, llm, search, today, *, after_pass="", exclude=None) -> s
 def plan_preview(state: dict, today: date) -> str:
     target, profile = state["target"], state["profile"]
     preview = planner.build_plan(today, date.fromisoformat(target["exam_date"]), float(profile["weekly_hours"]),
-                                 profile.get("learning_style") or "", state.get("boost_phase"))
+                                 profile.get("learning_style") or "", state.get("boost_phase"), profile.get("phase_weights"))
     state["plan_preview"] = preview
     state["pending"] = "plan_confirm"
     table = ["| 주차 | 단계 | 기간 | 예상 시간 | 할 일 |", "| --- | --- | --- | --- | --- |"]
     table += [f"| {r['week']} | {r['phase']} | {r['start'][5:]} ~ {r['end'][5:]} | {r['hours']:g}h | {r['task']} |" for r in preview["rows"]]
     weights = " / ".join(f"{k} {v}%" for k, v in preview["weights"].items())
-    boost = f" (지난 시험에서 부족했던 '{state['boost_phase']}' 비중을 올렸어요)" if state.get("boost_phase") else ""
+    boost = " (직접 정한 비중)" if planner.valid_weights(profile.get("phase_weights")) else (
+        f" (지난 시험에서 부족했던 '{state['boost_phase']}' 비중을 올렸어요)" if state.get("boost_phase") else "")
     return (f"**{target['name']} 학습 계획 미리보기** — 시험일 {target['exam_date']}({target.get('basis') or '사용자 입력'}) · "
             f"주당 {profile['weekly_hours']:g}시간 · 총 {preview['total_hours']:g}시간\n\n"
             f"단계 비율: {weights}{boost} · 시험 직전 3일은 복습으로 떼어 뒀어요.\n\n" + "\n".join(table)

@@ -37,18 +37,27 @@ def weights_for(style: str, boost_phase: str | None = None) -> dict[str, int]:
     return weights
 
 
+def valid_weights(weights) -> dict[str, int] | None:
+    """사용자가 직접 정한 단계 비중. 네 단계가 모두 있고 합이 100일 때만 쓴다."""
+    try:
+        clean = {p: int(weights[p]) for p in PHASES}
+    except (TypeError, KeyError, ValueError):
+        return None
+    return clean if all(v >= 0 for v in clean.values()) and sum(clean.values()) == 100 else None
+
+
 def _half(value: float) -> float:
     return max(0.5, round(value * 2) / 2)
 
 
 def build_plan(today: date, exam_date: date, weekly_hours: float, style: str = "",
-               boost_phase: str | None = None) -> dict:
+               boost_phase: str | None = None, custom_weights: dict | None = None) -> dict:
     """주차별 계획을 만든다. 저장 전 미리보기 용도로도 그대로 쓴다."""
     today, exam_date = d(today), d(exam_date)
     days_left = (exam_date - today).days
     if days_left < 1:
         raise ValueError("시험일이 오늘 이후여야 계획을 만들 수 있어요.")
-    weights = weights_for(style, boost_phase)
+    weights = valid_weights(custom_weights) or weights_for(style, boost_phase)
     review_start = max(today, exam_date - timedelta(days=REVIEW_DAYS))
     study_days = (review_start - today).days
     rows: list[dict] = []

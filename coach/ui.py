@@ -13,6 +13,8 @@ from pathlib import Path
 
 import streamlit as st
 
+from .services import site_label
+
 BLUE, INK, BG, LINE, MUTED, SOFT = "#123a6b", "#1d2733", "#f5f7fa", "#dde4ec", "#66737f", "#f3f6f9"
 SEA, R = "#1f73c4", "2px"  # 강조색, 모서리 반경(각진 모양)
 
@@ -344,7 +346,9 @@ header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stToolb
 .cc-mat .top {{ display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid {LINE}; background: {SOFT}; }}
 .cc-mat .kind {{ font-size: 11.5px; font-weight: 700; color: {MUTED}; letter-spacing: .3px; min-width: 72px; }}
 .cc-mat .name {{ font-size: 15px; font-weight: 800; color: {INK}; flex: 1 1 240px; word-break: keep-all; }}
-.cc-mat .src a, .cc-src a {{ font-size: 12px; color: {SEA}; text-decoration: none; margin-left: 2px; }}
+.cc-mat .src a, .cc-src a {{ font-size: 12px; color: {SEA}; text-decoration: none; margin-left: 2px; display: inline-block; white-space: nowrap;
+  border: 1px solid {LINE}; border-radius: {R}; padding: 0 6px; line-height: 20px; background: #fff; }}
+.cc-mat .src a:hover, .cc-src a:hover {{ border-color: {SEA}; }}
 .cc-mat .r {{ display: grid; grid-template-columns: 130px 1fr; gap: 10px; padding: 8px 14px; border-bottom: 1px dashed {LINE}; font-size: 13.5px; line-height: 1.6; }}
 .cc-mat .r:last-child {{ border-bottom: 0; }}
 .cc-mat .r .k {{ color: {MUTED}; }} .cc-mat .r .v {{ color: {INK}; }} .cc-mat .r .v a {{ color: {SEA}; }}
@@ -481,7 +485,9 @@ def _md_links(text: str) -> str:
 
 
 def _source_links(sources: list) -> str:
-    return " ".join(f'<a href="{escape(str(url), quote=True)}" target="_blank" rel="noopener">[{int(no)}]</a>' for no, url in sources or [])
+    """근거 링크. 번호만 있으면 무엇인지 알 수 없어, 어떤 곳인지(유튜브·티스토리 블로그 등)를 함께 적는다."""
+    return " ".join(f'<a href="{escape(str(s[1]), quote=True)}" target="_blank" rel="noopener">'
+                    f'{int(s[0])} {escape(str(s[2]) if len(s) > 2 else site_label(str(s[1])))}</a>' for s in sources or [])
 
 
 def material(item: dict) -> None:
