@@ -239,7 +239,7 @@ def diagnose(plan: dict | None, exam_date: str | None = None) -> dict:
     """
     if not plan or not plan.get("rows"):
         return {"has_plan": False, "findings": ["저장된 주차별 계획이 없어, 실행 기록으로 원인을 짚을 수 없어요."],
-                "next": "다음에는 \"학습 계획 세워줘\"로 계획을 만들고 주차마다 완료를 체크해 두면, 결과가 나왔을 때 어디가 비었는지 볼 수 있어요."}
+                "next": "\"학습 계획 세워줘\"로 계획을 만들고 주차마다 완료를 체크해 두면, 결과가 나왔을 때 어디가 비었는지 볼 수 있어요."}
     rows = plan["rows"]
     study = [r for r in rows if r["phase"] != "직전 복습"]
     done = [r for r in rows if r["done"]]

@@ -313,7 +313,7 @@ def memo_pad() -> None:
         text = st.text_area("내 메모장", S.get("memo", ""), height=130,
                             placeholder="예: Notion 학습 공간 링크, 접수 사이트 주소, 수험번호 메모 …",
                             help="로그인하면 계정에 저장돼요. 로그인 전에는 이 창을 닫으면 사라져요.")
-        if st.form_submit_button("메모 저장", use_container_width=True):
+        if st.form_submit_button("메모 저장", width="stretch"):
             S["memo"] = text
             st.toast("메모를 저장했어요.")
     linked = (S.get("notion") or {}).get("url")
@@ -329,14 +329,14 @@ def account_panel() -> None:
         ui.profile_card(auth["nickname"], "조건·계획·대화·메모가 자동 저장돼요")
         st.caption(f"저장 위치: {store.label}")
         memo_pad()
-        if st.button("기억한 Notion 토큰 지우기", use_container_width=True, key="forget_notion"):
+        if st.button("기억한 Notion 토큰 지우기", width="stretch", key="forget_notion"):
             st.session_state.pop("notion_token", None)
             try:
                 storage.put_meta(store, "notion", auth["nickname"], {})
                 st.toast("Notion 토큰을 지웠어요.")
             except storage.StoreError as error:
                 st.error(str(error))
-        if st.button("로그아웃", use_container_width=True, key="logout"):
+        if st.button("로그아웃", width="stretch", key="logout"):
             for key in ("auth", "saved_digest", "notion_token", "notion_token_loaded"):
                 st.session_state.pop(key, None)
             st.session_state["S"] = new_state()
@@ -349,8 +349,8 @@ def account_panel() -> None:
         account_pw = st.text_input("계정 비밀번호", type="password", help="다른 서비스에서 쓰는 비밀번호는 쓰지 마세요.")
         agree = st.checkbox("내 조건·계획·대화를 저장하는 데 동의해요 (새로 만들 때 필요)")
         col_in, col_up = st.columns(2)
-        do_login = col_in.form_submit_button("로그인", type="primary", use_container_width=True)
-        do_signup = col_up.form_submit_button("새로 만들기", use_container_width=True)
+        do_login = col_in.form_submit_button("로그인", type="primary", width="stretch")
+        do_signup = col_up.form_submit_button("새로 만들기", width="stretch")
     try:
         if do_login:
             loaded, info = storage.login(store, nick.strip(), account_pw)
@@ -384,7 +384,7 @@ with st.sidebar:
         if st.checkbox("내 조건·계획을 파일로 저장하는 데 동의해요"):
             saved = {k: v for k, v in S.items() if k not in ("messages", "pending", "plan_preview")}
             st.download_button("내 정보 내려받기 (.json)", json.dumps(saved, ensure_ascii=False, indent=1),
-                               "cert-coach-profile.json", "application/json", use_container_width=True)
+                               "cert-coach-profile.json", "application/json", width="stretch")
         uploaded = st.file_uploader("저장한 파일 불러오기", type="json")
         if uploaded is not None:
             raw = uploaded.getvalue()
@@ -398,7 +398,7 @@ with st.sidebar:
                     st.rerun()
                 except (ValueError, UnicodeDecodeError, AttributeError):
                     st.error("파일을 읽지 못했어요. 이 앱에서 내려받은 파일인지 확인해 주세요.")
-        if st.button("전체 초기화", use_container_width=True):
+        if st.button("전체 초기화", width="stretch"):
             st.session_state["S"] = new_state()
             st.rerun()
 
@@ -455,7 +455,7 @@ def notice_dialog() -> None:
         with st.container(border=True):
             st.caption(item["at"])
             st.markdown(item["text"])
-    if st.button("알림 모두 지우기", use_container_width=True):
+    if st.button("알림 모두 지우기", width="stretch"):
         S["notices"] = []
         st.rerun()
 
@@ -469,11 +469,11 @@ with st.container(key="topbar"):
     bar_left, bar_bell, bar_right = st.columns([3.4, 1, 1.2], vertical_alignment="center")
     bar_left.markdown(ui.brand_html(), unsafe_allow_html=True)
     _unread = st.session_state.get("unread", 0)
-    if bar_bell.button(f"알림 {_unread}" if _unread else "알림", icon=":material/notifications:", use_container_width=True,
+    if bar_bell.button(f"알림 {_unread}" if _unread else "알림", icon=":material/notifications:", width="stretch",
                        type="primary" if _unread else "secondary", key="bell"):
         st.session_state["unread"] = 0
         notice_dialog()
-    if bar_right.button(auth["nickname"] if auth else "로그인", icon=":material/account_circle:", use_container_width=True, key="profile_btn"):
+    if bar_right.button(auth["nickname"] if auth else "로그인", icon=":material/account_circle:", width="stretch", key="profile_btn"):
         profile_dialog()
 
 _plan = S.get("plan")
@@ -557,7 +557,7 @@ with tab_home:
         ui.section("이렇게 말해 보세요", "누르면 왼쪽 대화창으로 보내요")
         cols = st.columns(2)
         for index, example in enumerate(EXAMPLES):
-            cols[index % 2].button(example, key=f"ex_{index}", use_container_width=True, on_click=queue, args=(example,))
+            cols[index % 2].button(example, key=f"ex_{index}", width="stretch", on_click=queue, args=(example,))
 
 # ------------------------------------------------------------------ 추천
 with tab_rec:
@@ -642,7 +642,7 @@ with tab_sched, st.container(border=True, key="card5"):
     if not cert:  # 목록 밖 추천 후보는 추천 때 담아 둔 정보로 찾는다
         cert = next((cert_from_item(c) for c in (S.get("recommendations") or {}).get("candidates", []) if c["name"] == picked), None)
     cert = cert or target
-    if col2.button("공식 일정 확인", type="primary", use_container_width=True):
+    if col2.button("공식 일정 확인", type="primary", width="stretch"):
         with st.spinner("주관기관 공식 페이지를 확인하는 중이에요…"):
             S["schedules"][picked] = engine.lookup_schedule(cert, llm, search, today)
     result = S["schedules"].get(picked)
@@ -716,7 +716,7 @@ with tab_sched, st.container(border=True, key="card5"):
         chosen = [e for e in events if st.checkbox(f"{e['title']} — {e['date']}", key=f"cal_{e['title']}")]
         if chosen:
             st.dataframe(pd.DataFrame(chosen).rename(columns={"title": "일정", "date": "날짜", "note": "메모"}),
-                         hide_index=True, use_container_width=True)
+                         hide_index=True, width="stretch")
             gcfg = gcal.config()
             with st.container(border=True, key="card6"):
                 st.markdown(ui.badges([("Google Calendar", "navy"), ("내 계정으로 연결", "sky")]), unsafe_allow_html=True)
@@ -732,13 +732,13 @@ with tab_sched, st.container(border=True, key="card5"):
                     if linked.get("refresh_token"):
                         st.caption("연결됨 — 고른 일정만 내 Google Calendar(기본 캘린더)에 등록해요. 하루 전 알림이 붙어요.")
                         g1, g2 = st.columns([2, 1])
-                        if g1.button(f"선택한 {len(chosen)}개 일정 등록하기", type="primary", use_container_width=True):
+                        if g1.button(f"선택한 {len(chosen)}개 일정 등록하기", type="primary", width="stretch"):
                             try:
                                 with st.spinner("Google Calendar에 등록하는 중이에요…"):
                                     st.session_state["gcal_result"] = gcal.insert_events(gcfg, linked["refresh_token"], chosen)
                             except gcal.CalendarError as error:
                                 st.error(str(error))
-                        if g2.button("연결 해제", use_container_width=True):
+                        if g2.button("연결 해제", width="stretch"):
                             gcal.revoke(linked["refresh_token"])
                             storage.put_meta(store, "gcal", auth["nickname"], {})
                             st.session_state.pop("gcal_result", None)
@@ -780,7 +780,7 @@ with tab_space, st.container(border=True, key="card7"):
         b1, b2, b3, b4 = st.columns(4)
         for col, label, phrase in ((b1, "접수했어요", "접수했어"), (b2, "시험 봤어요", "시험 봤어"),
                                    (b3, "합격했어요", "합격했어"), (b4, "불합격했어요", "불합격했어")):
-            if col.button(label, use_container_width=True):
+            if col.button(label, width="stretch"):
                 with st.spinner("반영하는 중이에요…"):
                     st.session_state["flash"] = send(phrase)
                 st.rerun()
@@ -797,7 +797,7 @@ with tab_space, st.container(border=True, key="card7"):
                 _row.setdefault("done_at", "")
             frame = pd.DataFrame(plan["rows"])[["week", "phase", "start", "end", "hours", "task", "done", "done_at", "memo"]]
             edited = st.data_editor(
-                frame, hide_index=True, use_container_width=True, disabled=["week", "phase", "start", "end", "hours", "task", "done_at"],
+                frame, hide_index=True, width="stretch", disabled=["week", "phase", "start", "end", "hours", "task", "done_at"],
                 column_config={"week": "주차", "phase": "단계", "start": "시작", "end": "마감",
                                "hours": st.column_config.NumberColumn("예상 시간", format="%.1f h"), "task": "할 일",
                                "done": st.column_config.CheckboxColumn("완료"), "done_at": "완료일", "memo": "메모"}, key="plan_editor")
@@ -808,13 +808,13 @@ with tab_space, st.container(border=True, key="card7"):
                     row["memo"] = str(new["memo"] or "")
                 st.rerun()
             c1, c2, c3 = st.columns(3)
-            if c1.button("남은 기간으로 재조정", disabled=not active, use_container_width=True):
+            if c1.button("남은 기간으로 재조정", disabled=not active, width="stretch"):
                 outcome = planner.readjust(plan, today, hours or plan["weekly_hours"], f"지연 {info['delay_days']:g}일")
                 st.session_state["flash"] = outcome["message"]
                 st.rerun()
             c2.download_button("내보내기 (.md)", planner.space_markdown(S, info if active else None),
-                               "study-space.md", "text/markdown", use_container_width=True)
-            if c3.button("계획 삭제", use_container_width=True):
+                               "study-space.md", "text/markdown", width="stretch")
+            if c3.button("계획 삭제", width="stretch"):
                 S["plan"] = None
                 st.rerun()
             if plan["history"]:
@@ -825,7 +825,7 @@ with tab_space, st.container(border=True, key="card7"):
             st.caption((f"연결된 페이지가 있어요. Notion에서 완료를 체크한 뒤 '동기화'를 누르면 앱의 진행률·지연·재조정과 Notion 페이지가 맞춰져요."
                         if linked_url else "아직 연결된 페이지가 없어요. 처음이면 '새로 만들기', 이미 만든 페이지가 있으면 '동기화'에서 그 페이지 링크를 넣어 주세요."))
             n1, n2, n3 = st.columns(3)
-            if n1.button("Notion과 동기화", type="primary", use_container_width=True):
+            if n1.button("Notion과 동기화", type="primary", width="stretch"):
                 if remembered_token() and linked_url:
                     try:
                         with st.spinner("Notion을 읽고 다시 쓰는 중이에요…"):
@@ -834,10 +834,10 @@ with tab_space, st.container(border=True, key="card7"):
                         st.error(f"동기화하지 못했어요. {error}")
                 else:
                     notion_sync_dialog(today, hours, active)
-            if n2.button("Notion에 새로 만들기", use_container_width=True):
+            if n2.button("Notion에 새로 만들기", width="stretch"):
                 notion_dialog(info if active else None)
             if linked_url:
-                n3.link_button("Notion 페이지 열기", linked_url, use_container_width=True)
+                n3.link_button("Notion 페이지 열기", linked_url, width="stretch")
         elif not active:
             st.info(f"현재 상태는 '{target['state']}'예요. 새 목표가 정해지면 다시 계획을 세울 수 있어요.")
         else:
@@ -864,7 +864,7 @@ with tab_space, st.container(border=True, key="card7"):
             if preview:
                 st.dataframe(pd.DataFrame(preview["rows"])[["week", "phase", "start", "end", "hours", "task"]].rename(
                     columns={"week": "주차", "phase": "단계", "start": "시작", "end": "마감", "hours": "예상 시간", "task": "할 일"}),
-                    hide_index=True, use_container_width=True)
+                    hide_index=True, width="stretch")
                 st.caption("단계 비율 " + " / ".join(f"{k} {v}%" for k, v in preview["weights"].items())
                            + f" · 총 {preview['total_hours']:g}시간 · 시험 직전 3일은 복습 · 강의 분량은 '분량 확인 필요'")
                 warning = planner.capacity_check(preview, required)
@@ -934,12 +934,12 @@ with tab_space:
                      "기출": "기출문제 회차 풀이 + 오답 정리", "모의고사·복습": "실전 모의고사 + 취약 단원 복습 (시험 직전 3일은 따로 복습)"}
             _edited = st.data_editor(
                 pd.DataFrame([{"단계": p, "비중(%)": int(_now[p]), "하는 일": _does[p]} for p in planner.PHASES]),
-                hide_index=True, use_container_width=True, disabled=["단계", "하는 일"], key="weights_editor",
+                hide_index=True, width="stretch", disabled=["단계", "하는 일"], key="weights_editor",
                 column_config={"비중(%)": st.column_config.NumberColumn("비중(%)", min_value=0, max_value=100, step=5, format="%d")})
             _new = {r["단계"]: int(r["비중(%)"] or 0) for r in _edited.to_dict("records")}
             _sum = sum(_new.values())
             w1, w2, w3 = st.columns([1.2, 1.2, 2])
-            if w1.button("이 비중으로 저장", type="primary", use_container_width=True, key="weights_save"):
+            if w1.button("이 비중으로 저장", type="primary", width="stretch", key="weights_save"):
                 if _sum != 100:
                     st.error(f"비중의 합이 100이 되어야 해요. 지금은 {_sum}이에요.")
                 else:
@@ -949,7 +949,7 @@ with tab_space:
                                                  + (" 이미 저장된 계획은 그대로예요. 새 비중을 쓰려면 '계획 삭제' 뒤 다시 '계획 미리보기'를 눌러 주세요."
                                                     if S.get("plan") else ""))
                     st.rerun()
-            if w2.button("기본값으로 되돌리기", use_container_width=True, key="weights_reset", disabled=not _custom):
+            if w2.button("기본값으로 되돌리기", width="stretch", key="weights_reset", disabled=not _custom):
                 P["phase_weights"] = None
                 S["plan_preview"] = None
                 st.session_state.pop("weights_editor", None)
@@ -1034,8 +1034,8 @@ with tab_more:
             ("불합격했다면", ["완료율이 가장 낮았던 단계를 사실대로 알려 줘요", "시험 이력에 남겨 다음 추천에 반영해요",
                           "다음 회차 일정을 확인한 뒤 그 단계 비중을 올린 계획을 제안해요"])])
         r1, r2 = st.columns(2)
-        r1.button("합격했어요", use_container_width=True, key="more_pass", on_click=queue, args=("합격했어",), disabled=not target.get("code"))
-        r2.button("불합격했어요", use_container_width=True, key="more_fail", on_click=queue, args=("불합격했어",), disabled=not target.get("code"))
+        r1.button("합격했어요", width="stretch", key="more_pass", on_click=queue, args=("합격했어",), disabled=not target.get("code"))
+        r2.button("불합격했어요", width="stretch", key="more_fail", on_click=queue, args=("불합격했어",), disabled=not target.get("code"))
     with st.container(border=True, key="card11"):
         ui.section("보유 자격증·유효기간 관리", "이미 보유한 자격증은 다시 추천하지 않아요")
         if P["owned"]:
@@ -1046,14 +1046,14 @@ with tab_more:
         if S["validity_opt_in"]:
             st.caption("어학 성적처럼 만료가 있는 자산의 취득일·만료일을 입력하면 유효 여부와 갱신 시점을 검토해요. 날짜 형식: YYYY-MM-DD")
             base = pd.DataFrame(S["assets"] or [{"name": "", "acquired": "", "expires": ""}], columns=["name", "acquired", "expires"])
-            edited = st.data_editor(base, num_rows="dynamic", hide_index=True, use_container_width=True,
+            edited = st.data_editor(base, num_rows="dynamic", hide_index=True, width="stretch",
                                     column_config={"name": "자산 (자격증·어학 성적)", "acquired": "취득일", "expires": "만료일"},
                                     key="asset_editor")
             S["assets"] = [{k: ("" if pd.isna(v) else str(v)) for k, v in row.items()} for row in edited.to_dict("records")
                            if isinstance(row.get("name"), str) and row["name"].strip()]
             rows = engine.validity_review(S["assets"], today)
             if rows:
-                st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+                st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
                 st.caption("만료일은 입력하신 값 기준이에요. 기관별 유효기간 규정은 공식 사이트에서 확인해 주세요.")
         else:
             st.caption("꺼져 있으면 이름·등급만 확인하고 유효기간은 다루지 않아요.")

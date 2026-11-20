@@ -159,6 +159,12 @@ def interpret(message: str, state: dict, llm: LLM | None) -> tuple[str, dict | N
     elif intent == "general" and _keyword_intent(message) == "decide":
         intent = "decide"
     cert = find_cert(message) or (find_cert(cert_name) if cert_name else None)
+    generic = re.sub(r"\s", "", cert_name or "") in ("", "자격증", "시험", "자격", "이자격증", "그자격증", "1순위", "대안")
+    target_name = state["target"].get("name") or ""
+    same_as_target = bool(target_name) and bool(cert_name) and (cert_name in target_name or target_name in cert_name)
+    if cert is None and cert_name and not generic and not same_as_target \
+            and re.sub(r"\s", "", cert_name) in re.sub(r"\s", "", message):
+        state["_named"] = cert_name.strip()[:60]  # 문장에 실제로 적힌, 목록에 없는 자격증 이름
     return intent, cert, updates
 
 
@@ -312,6 +318,13 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
 
     # 2) 의도 해석 + 조건 갱신
     intent, cert, updates = interpret(text, state, llm)
+    named = state.pop("_named", "")
+    if cert is None and named and intent in ("schedule", "prepare", "decide", "passed", "failed", "registered", "exam_taken"):
+        # 문장에 자격증 이름이 있는데 목록·자료집에 없으면 검색으로 확인한다. 확인하지 못하면 지금 목표로 대신 답하지 않는다.
+        cert, _how = engine.verify_outside(named, llm, search)
+        if cert is None:
+            return (f"'{named}'은(는) 목록·자료집·검색 어디에서도 확인하지 못했어요. 정확한 자격증 이름으로 다시 말해 주세요. "
+                    "(지금 목표 자격증의 일정이 궁금하면 \"시험 일정 알려줘\"라고만 말하면 돼요.)")
     old_hours = state["profile"].get("weekly_hours")
     changed = apply_profile(state, updates)
     prefix = f"조건을 반영했어요: {', '.join(changed)}\n\n" if changed else ""
@@ -371,6 +384,8 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
     if intent == "decide":
         set_target(state, target_cert)
         target = state["target"]
+        if target.get("state") != "접수완료":  # 불합격·합격·응시완료 뒤에 다시 준비하기로 하면 새로 준비하는 상태로 돌린다
+            target["state"] = "준비중"
         lines = [f"**{target['name']}** 준비를 시작하는 걸로 저장했어요. (상태: 준비중)"]
         if target.get("exam_date"):
             lines.append(f"목표 회차: {target.get('round') or ''} 시험일 {target['exam_date']} — 다른 회차면 '일정' 탭에서 바꿀 수 있어요.")
