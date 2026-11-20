@@ -65,7 +65,6 @@ GREETING = (
     "일정·응시료는 공식 사이트에서 확인된 것만 보여 주고, 확인하지 못한 값은 **미확인**으로 남겨요."
 )
 ASSETS = Path(__file__).resolve().parent / "assets"
-BANNER = ASSETS / "banner.png"
 AVATAR = {"assistant": str(ASSETS / "dalda.png") if (ASSETS / "dalda.png").exists() else ":material/school:",
           "user": ":material/person:"}
 EXAMPLES = ["데이터 분석 직무에 맞는 자격증 추천해줘", "1순위 시험 일정 알려줘", "1순위로 준비할래",
@@ -276,9 +275,7 @@ elif target.get("name"):
     _line = f"목표 {target['name']} · 시험일 미확인"
 else:
     _line = "아직 목표 자격증이 없어요. 대화나 추천 탭에서 시작해 보세요."
-if BANNER.exists():
-    with st.container(key="banner"):
-        st.image(str(BANNER))
+ui.banner()
 ui.greeting(auth["nickname"] if auth else None,
             f"오늘 {today.isoformat()} · {_line}" + ("" if auth else " · 로그인 전이라 창을 닫으면 내용이 사라져요"),
             [("AI 추천" if llm else "규칙 기반 추천", bool(llm)), ("웹 검색" if search else "공식 페이지 직접 수집", bool(search)),

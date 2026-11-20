@@ -17,7 +17,7 @@ SEA, R = "#1f73c4", "2px"  # 강조색, 모서리 반경(각진 모양)
 
 CSS = f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Gaegu:wght@700&family=Jua&family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
 html, body, [class*="st-"], .stMarkdown, button, input, textarea, select {{
   font-family: "Noto Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
 }}
@@ -269,6 +269,18 @@ img.cc-avatar {{ object-fit: cover; background: #fff; border: 1px solid {LINE}; 
 /* 대화: 달달이 얼굴 아이콘 */
 [data-testid="stChatMessage"] > img, [data-testid="stChatMessage"] [data-testid^="stChatMessageAvatar"] img {{ display: block !important; width: 32px; height: 32px;
   border-radius: 50%; border: 1px solid {LINE}; background: #fff; object-fit: cover; flex: none; }}
+
+/* ================= 배너 ================= */
+.cc-banner {{ background: #fff; border: 1px solid {LINE}; border-radius: {R}; margin-top: 8px; padding: 18px 16px; display: flex; align-items: center;
+  justify-content: center; gap: 34px; }}
+.cc-banner img {{ width: 112px; height: 112px; object-fit: cover; flex: none; }}
+.cc-banner .w {{ position: relative; }}
+.cc-banner .t {{ font-family: "Jua", "Noto Sans KR", sans-serif; font-size: 46px; line-height: 1.15; color: #111; letter-spacing: 4px; position: relative; white-space: nowrap; }}
+.cc-banner .n {{ font-family: "Gaegu", "Noto Sans KR", sans-serif; font-weight: 700; font-size: 30px; color: #111; letter-spacing: 8px; margin-top: 6px; position: relative; padding-left: 26px; }}
+.cc-banner .sp {{ position: absolute; font-style: normal; font-size: 14px; color: #111; font-family: "Noto Sans KR", sans-serif; }}
+.cc-banner .sp.a {{ top: -8px; left: 38%; }} .cc-banner .sp.b {{ top: -10px; right: 2px; }} .cc-banner .sp.c {{ top: -2px; left: 4px; }}
+@media (max-width: 760px) {{ .cc-banner {{ gap: 16px; }} .cc-banner img {{ width: 76px; height: 76px; }} .cc-banner .t {{ font-size: 30px; letter-spacing: 2px; }}
+  .cc-banner .n {{ font-size: 22px; }} }}
 </style>
 """
 
@@ -288,6 +300,7 @@ def _data_uri(name: str) -> str:
 
 
 FACE = _data_uri("dalda.png")
+FACE_BIG = _data_uri("dalda_big.png") or FACE
 MARK = f'<img class="cc-mark" src="{FACE}" alt="">' if FACE else '<span class="cc-mark"></span>'
 
 
@@ -300,6 +313,13 @@ def brand_html(page: str = "달달이") -> str:
 def header(pills: list[tuple[str, bool]], today: str, user: str | None) -> None:
     """위젯 없는 상단바 (입장 화면용)."""
     st.markdown(f'<div class="cc-header">{brand_html()}</div>', unsafe_allow_html=True)
+
+
+def banner() -> None:
+    """대시보드 맨 위 배너: 달달이 얼굴 + 손글씨 느낌의 서비스 이름."""
+    face = f'<img src="{FACE_BIG}" alt="달달이">' if FACE_BIG else ""
+    st.markdown(f'<div class="cc-banner">{face}<div class="w"><div class="t"><i class="sp a">✳</i><i class="sp b">✳</i>자격증 패스 코치</div>'
+                '<div class="n"><i class="sp c">✳</i>달달이</div></div></div>', unsafe_allow_html=True)
 
 
 def greeting(user: str | None, line: str, pills: list[tuple[str, bool]] | None = None) -> None:
