@@ -141,6 +141,19 @@ button[kind="primary"], [data-testid="stBaseButton-primary"], [data-testid="stBa
   background: {BLUE} !important; border-color: {BLUE} !important; color: #fff !important; }}
 button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover, [data-testid="stBaseButton-primaryFormSubmit"]:hover {{
   background: #0c2a4f !important; border-color: #0c2a4f !important; color: #fff !important; }}
+/* 대시보드 배너: 얼굴과 달이 아주 조금만 떠 있다(과하지 않게) */
+.cc-banner .f img {{ animation: cc-soft 5s ease-in-out infinite; }}
+.cc-banner .moon {{ animation: cc-soft-moon 6.5s ease-in-out infinite; }}
+@keyframes cc-soft {{ 0%, 100% {{ transform: translateY(0); }} 50% {{ transform: translateY(-5px); }} }}
+@keyframes cc-soft-moon {{ 0%, 100% {{ transform: translate(0, 0) rotate(-14deg); }} 50% {{ transform: translate(3px, -5px) rotate(-6deg); }} }}
+@media (prefers-reduced-motion: reduce) {{ .cc-banner .f img, .cc-banner .moon {{ animation: none; }} }}
+/* 방금 대화로 반영된 것 */
+.cc-now {{ border: 1px solid {LINE}; border-left: 3px solid {BLUE}; background: #fff; border-radius: {R}; padding: 10px 14px; margin: 8px 0 4px; animation: cc-now-in .5s ease-out; }}
+@keyframes cc-now-in {{ from {{ opacity: 0; transform: translateY(-6px); }} to {{ opacity: 1; transform: none; }} }}
+.cc-now .h {{ font-size: 12px; font-weight: 700; color: {BLUE}; margin-bottom: 6px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }}
+.cc-now .h span {{ color: {MUTED}; font-weight: 500; }}
+.cc-now .g {{ display: grid; grid-template-columns: 110px 1fr; gap: 4px 12px; font-size: 13px; line-height: 1.55; }}
+.cc-now .g .k {{ color: {MUTED}; }} .cc-now .g .v {{ color: {INK}; font-weight: 500; word-break: keep-all; }}
 /* ================= 입장 화면: 달달이 소개 ================= */
 .cc-wel {{ background: #fff; border: 1px solid {LINE}; border-top: 3px solid {BLUE}; border-radius: {R}; padding: 24px 26px 20px; position: relative; overflow: hidden; }}
 .cc-wel > * {{ position: relative; z-index: 1; }}
@@ -154,7 +167,7 @@ button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover, [data-
 .cc-wel .bg .m1 {{ right: 4%; top: 12px; width: 44px; height: 44px; }}
 .cc-wel .bg .m2 {{ left: 46%; top: 6%; width: 24px; height: 24px; opacity: .55; animation-duration: 15s; animation-delay: -6s; }}
 @keyframes cc-moon {{ 0%, 100% {{ transform: translate(0, 0) rotate(-8deg); }} 25% {{ transform: translate(-12px, 9px) rotate(4deg); }}
-  50% {{ transform: translate(-4px, 18px) rotate(10deg); }} 75% {{ transform: translate(10px, 7px) rotate(-2deg); }} }}
+  50% {{ transform: translate(-4px, 10px) rotate(10deg); }} 75% {{ transform: translate(10px, 7px) rotate(-2deg); }} }}
 .cc-wel .face {{ position: relative; }}
 .cc-wel .face svg {{ position: absolute; right: -24px; top: -12px; width: 26px; height: 26px; animation: cc-orbit 3.4s ease-in-out infinite; }}
 @keyframes cc-orbit {{ 0%, 100% {{ transform: translate(0, 0) rotate(-10deg); }} 50% {{ transform: translate(5px, -7px) rotate(12deg); }} }}
@@ -527,6 +540,14 @@ def welcome() -> None:
         '<span class="q">시험 일정 알려줘</span><span class="q">학습 계획 세워줘</span><span class="q">오늘 뭐 공부해?</span></div>'
         '<div class="vow"><div>일정과 응시료는 공식 사이트에서 확인된 것만 보여 줘요</div><div>저장과 캘린더 등록은 동의한 것만 해요</div>'
         '<div>합격이나 취업을 보장한다고 말하지 않아요</div></div></div>', unsafe_allow_html=True)
+
+
+def just_now(items: list, tab: str, saved: str) -> None:
+    """방금 대화로 정해지거나 바뀐 것을 대시보드 위에 한 번에 보여 준다."""
+    rows = "".join(f'<div class="k">{escape(str(k))}</div><div class="v">{escape(str(v))}</div>' for k, v in items)
+    where = f"'{escape(tab)}' 탭을 열어 뒀어요 · " if tab else ""
+    st.markdown(f'<div class="cc-now"><div class="h">방금 대화로 반영된 것<span>{where}{escape(saved)}</span></div><div class="g">{rows}</div></div>',
+                unsafe_allow_html=True)
 
 
 def greeting(user: str | None, line: str, pills: list[tuple[str, bool]] | None = None) -> None:

@@ -130,13 +130,92 @@ if not S["messages"]:
     S["messages"].append({"role": "assistant", "content": GREETING})
 
 
+PROFILE_LABELS = {"desired_job": "희망 직무", "major_experience": "전공·경험", "weekly_hours": "주당 가용시간", "cost_pref": "비용 선호",
+                  "learning_style": "학습 방식", "budget": "예산", "english": "영어 성적", "target_period": "목표 시기", "extra": "기타 사항"}
+
+
+def _facts() -> dict:
+    """대화 한 번으로 무엇이 바뀌었는지 비교하기 위한 현재 상태 요약."""
+    t, plan, rec = S["target"], S.get("plan"), S.get("recommendations") or {}
+    return {
+        "target": t.get("name"), "state": t.get("state"), "exam": t.get("exam_date"),
+        "plan": (len(plan["rows"]), plan.get("created"), len(plan.get("history") or [])) if plan else None,
+        "preview": bool(S.get("plan_preview")),
+        "rec": tuple(c.get("name") for c in rec.get("candidates") or []),
+        "path": ((S.get("study_path") or {}).get("cert"), hash((S.get("study_path") or {}).get("text") or "")),
+        "guide": hash(S.get("guideline") or ""),
+        "sched": tuple(sorted((k, v.get("checked_at"), len(v.get("rounds") or [])) for k, v in (S.get("schedules") or {}).items())),
+        "owned": tuple(S["profile"].get("owned") or []),
+        "history": tuple((h.get("cert"), h.get("result")) for h in S["profile"].get("exam_history") or []),
+        "profile": {k: S["profile"].get(k) for k in PROFILE_LABELS},
+    }
+
+
+def _changes(before: dict, after: dict) -> tuple[list, str]:
+    """바뀐 항목(이름, 값) 목록과, 그 내용을 보려면 열어야 하는 탭."""
+    items, tabs = [], []
+    if after["rec"] != before["rec"] and after["rec"]:
+        items.append(("추천 결과", "1순위 " + after["rec"][0] + (" · 대안 " + ", ".join(after["rec"][1:]) if len(after["rec"]) > 1 else "")))
+        tabs.append("추천")
+    if after["guide"] != before["guide"] and S.get("guideline"):
+        items.append(("취업 가이드라인", f"{S['profile'].get('desired_job') or '관심 공고'} 기준으로 분석"))
+        tabs.append("추천")
+    if after["target"] != before["target"] and after["target"]:
+        items.append(("목표 자격증", after["target"]))
+        tabs.append("일정")
+    if after["state"] != before["state"] and after["state"] and (after["target"] == before["target"] or after["state"] != "준비중"):
+        items.append(("진행 상태", after["state"]))
+    new_sched = [k for k, *_ in set(after["sched"]) - set(before["sched"])]
+    if new_sched:
+        items.append(("공식 일정 확인", ", ".join(sorted(set(new_sched)))))
+        tabs.append("일정")
+    if after["exam"] != before["exam"]:
+        items.append(("시험일", after["exam"] or "지움(다음 회차 확인 필요)"))
+        tabs.append("일정")
+    if after["path"] != before["path"] and after["path"][0]:
+        items.append(("강의·교재 추천", f"{after['path'][0]} 자료를 찾았어요"))
+        tabs.append("계획")
+    if after["preview"] and not before["preview"]:
+        items.append(("계획 미리보기", "아직 저장 전이에요. '응'이라고 답하면 저장돼요"))
+        tabs.append("계획")
+    if after["plan"] != before["plan"]:
+        items.append(("학습 계획", f"{after['plan'][0]}주차 계획 저장" + (" (재조정 반영)" if before["plan"] and after["plan"][2] > before["plan"][2] else "")
+                      if after["plan"] else "지움"))
+        tabs.append("계획")
+    changed = [f"{PROFILE_LABELS[k]} {after['profile'][k]:g}시간" if k == "weekly_hours" else f"{PROFILE_LABELS[k]} {str(after['profile'][k])[:30]}"
+               for k in PROFILE_LABELS if after["profile"][k] != before["profile"][k] and after["profile"][k]]
+    if changed:
+        items.append(("내 조건", " · ".join(changed)))
+        tabs.append("프로필")
+    added = [n for n in after["owned"] if n not in before["owned"]]
+    if added:
+        items.append(("보유 자격증", "추가: " + ", ".join(added)))
+        tabs.append("기능")
+    if len(after["history"]) > len(before["history"]) or after["history"] != before["history"]:
+        last = after["history"][-1] if after["history"] else None
+        if last:
+            items.append(("시험 이력", f"{last[0]} {last[1]} 기록"))
+            tabs.append("프로필")
+    order = ["계획", "일정", "추천", "프로필", "기능"]  # 여러 개가 바뀌면 다음에 볼 가능성이 큰 탭부터
+    tab = next((name for name in order if name in tabs), "")
+    if ("시험 이력" in [k for k, _ in items]) and after["state"] in ("합격", "불합격"):
+        tab = "프로필"
+    return items, tab
+
+
 def send(message: str) -> str:
     S["messages"].append({"role": "user", "content": message})
+    before = _facts()
     try:
         reply = handle(message, S, llm, search, today)
     except Exception as error:  # 한 단계가 실패해도 대화 전체를 멈추지 않는다
         reply = f"이 요청을 처리하다 문제가 생겼어요({type(error).__name__}). 조건을 바꿔 다시 시도해 주세요."
     S["messages"].append({"role": "assistant", "content": reply})
+    items, tab = _changes(before, _facts())
+    st.session_state["just_now"] = {"items": items, "tab": tab} if items else None
+    if tab:  # 바뀐 내용이 있는 탭을 오른쪽에 바로 연다
+        st.session_state["tab_open"] = tab
+        st.session_state["tab_gen"] = st.session_state.get("tab_gen", 0) + 1
     return reply
 
 
@@ -542,7 +621,14 @@ with right:
         ("진행률", f"{_info['percent']}%" if _info else "—", f"현재 {_info['current_week']}주차" if _info and _info["current_week"] else "계획 저장 후 표시"),
         ("지연", f"{_info['delay_days']:g}일" if _info else "—", "3일 이상이면 재조정"),
     ])
-    tab_home, tab_rec, tab_sched, tab_space, tab_profile, tab_more, tab_guide = st.tabs(["대화", "추천", "일정", "계획", "프로필", "기능", "이용 안내"])
+    _now = st.session_state.get("just_now")
+    if _now:
+        ui.just_now(_now["items"], _now["tab"],
+                    "계정에 자동 저장됐어요" if auth else "로그인 전이라 이 창에만 남아 있어요(로그인하면 저장돼요)")
+    # 대화로 무언가 정해지면 그 내용이 있는 탭을 연다. 평소에는 사용자가 누른 탭이 그대로 유지된다.
+    tab_home, tab_rec, tab_sched, tab_space, tab_profile, tab_more, tab_guide = st.tabs(
+        ["대화", "추천", "일정", "계획", "프로필", "기능", "이용 안내"],
+        default=st.session_state.get("tab_open") or "대화", key=f"main_tabs_{st.session_state.get('tab_gen', 0)}")
 
 with tab_home:
     with st.container(border=True, key="card1"):
