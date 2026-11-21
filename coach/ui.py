@@ -147,12 +147,22 @@ button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover, [data-
 /* 뒤에서 천천히 떠다니는 작은 얼굴들 */
 .cc-wel .bg {{ position: absolute; inset: 0; z-index: 0; pointer-events: none; }}
 .cc-wel .bg img {{ position: absolute; width: 34px; height: 34px; border-radius: 50%; opacity: .16; animation: cc-drift 14s ease-in-out infinite; }}
-.cc-wel .bg .b1 {{ right: 6%; top: 10%; }} .cc-wel .bg .b2 {{ right: 22%; top: 30%; width: 22px; height: 22px; animation-duration: 18s; animation-delay: -5s; }}
+.cc-wel .bg .b1 {{ right: 17%; top: 9%; }} .cc-wel .bg .b2 {{ right: 22%; top: 30%; width: 22px; height: 22px; animation-duration: 18s; animation-delay: -5s; }}
 .cc-wel .bg .b3 {{ left: 3%; bottom: 8%; width: 26px; height: 26px; animation-duration: 16s; animation-delay: -9s; }}
+/* 달도 함께 떠다닌다: 배경에 둘, 달달이 곁에 하나 */
+.cc-wel .bg svg {{ position: absolute; animation: cc-moon 11s ease-in-out infinite; }}
+.cc-wel .bg .m1 {{ right: 4%; top: 12px; width: 44px; height: 44px; }}
+.cc-wel .bg .m2 {{ left: 46%; top: 6%; width: 24px; height: 24px; opacity: .55; animation-duration: 15s; animation-delay: -6s; }}
+@keyframes cc-moon {{ 0%, 100% {{ transform: translate(0, 0) rotate(-8deg); }} 25% {{ transform: translate(-12px, 9px) rotate(4deg); }}
+  50% {{ transform: translate(-4px, 18px) rotate(10deg); }} 75% {{ transform: translate(10px, 7px) rotate(-2deg); }} }}
+.cc-wel .face {{ position: relative; }}
+.cc-wel .face svg {{ position: absolute; right: -24px; top: -12px; width: 26px; height: 26px; animation: cc-orbit 3.4s ease-in-out infinite; }}
+@keyframes cc-orbit {{ 0%, 100% {{ transform: translate(0, 0) rotate(-10deg); }} 50% {{ transform: translate(5px, -7px) rotate(12deg); }} }}
+@media (prefers-reduced-motion: reduce) {{ .cc-wel .bg svg, .cc-wel .face svg {{ animation: none; }} }}
 @keyframes cc-drift {{ 0%, 100% {{ transform: translate(0, 0) rotate(-6deg); }} 33% {{ transform: translate(-14px, 12px) rotate(5deg); }} 66% {{ transform: translate(10px, -10px) rotate(-3deg); }} }}
 .cc-wel .hi {{ display: inline-block; font-size: 12.5px; font-weight: 700; color: {SEA}; letter-spacing: .2px; border: 1px solid {LINE}; background: {SOFT}; padding: 2px 9px; border-radius: {R}; }}
 .cc-wel h1 {{ font-size: 32px; font-weight: 900; color: {BLUE}; margin: 8px 0 4px; padding: 0; line-height: 1.2; letter-spacing: -.3px; }}
-.cc-wel .sub {{ font-size: 14.5px; color: {MUTED}; line-height: 1.65; margin: 0; max-width: 620px; }}
+.cc-wel .sub {{ font-size: 14.5px; color: {MUTED}; line-height: 1.65; margin: 0; max-width: 560px; }}
 .cc-wel .sub b {{ color: {INK}; font-weight: 700; box-shadow: inset 0 -7px 0 #dbe8f6; }}
 /* 무대: 달달이가 네 걸음 위를 옮겨 다니며 설명한다 */
 .cc-wel .stage {{ position: relative; padding-top: 118px; margin-top: 10px; }}
@@ -500,8 +510,14 @@ def welcome() -> None:
     road = "".join(f'<div class="stop"><span class="no">STEP {i:02d}</span>{icons[key]}<div class="t">{escape(title)}</div>'
                    f'<div class="d">{escape(desc)}</div></div>' for i, (key, title, desc, _) in enumerate(stops, 1))
     lines = "".join(f"<span>{escape(say)}</span>" for *_, say in stops)
-    face = f'<div class="face"><img src="{FACE_BIG}" alt="달달이"></div>' if FACE_BIG else ""
-    drift = "".join(f'<img class="b{i}" src="{FACE}" alt="">' for i in (1, 2, 3)) if FACE else ""
+    def moon(cls: str = "") -> str:  # 웃는 초승달(대시보드 배너의 달과 같은 모양, 테두리는 남색)
+        return (f'<svg class="{cls}" viewBox="0 0 48 48" aria-hidden="true"><path d="M31 6a18 18 0 1 0 11 27A15 15 0 0 1 31 6z" fill="#f7cf5a" '
+                f'stroke="{BLUE}" stroke-width="2.2" stroke-linejoin="round"/><circle cx="21" cy="25" r="1.6" fill="{BLUE}"/>'
+                f'<circle cx="29" cy="29" r="1.6" fill="{BLUE}"/><path d="M22 32q3 2.5 6 1" fill="none" stroke="{BLUE}" stroke-width="1.8" stroke-linecap="round"/>'
+                '<circle cx="19" cy="30" r="2.2" fill="#f4a6a0" opacity=".8"/></svg>')
+
+    face = f'<div class="face"><img src="{FACE_BIG}" alt="달달이">{moon()}</div>' if FACE_BIG else ""
+    drift = ("".join(f'<img class="b{i}" src="{FACE}" alt="">' for i in (1, 2, 3)) if FACE else "") + moon("m1") + moon("m2")
     st.markdown(
         f'<div class="cc-wel"><div class="bg">{drift}</div>'
         '<span class="hi">안녕! 나는 자격증 코치 달달이야</span><h1>자격증 패스 코치</h1>'
