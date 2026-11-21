@@ -232,6 +232,28 @@ button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover, [data-
 [data-testid="stLayoutWrapper"]:has(> [class*="st-key-cardchat"]) {{ flex: 0 0 clamp(300px, calc(100vh - 300px), 720px) !important;
   height: clamp(300px, calc(100vh - 300px), 720px) !important; }}
 @media (max-width: 899px) {{ [data-testid="stLayoutWrapper"]:has(> [class*="st-key-cardchat"]) {{ flex: 0 0 340px !important; height: 340px !important; }} }}
+/* ================= 왼쪽 아래 도우미 달달이 ================= */
+.cc-help {{ position: fixed; left: 18px; bottom: 16px; z-index: 999980; display: flex; flex-direction: column-reverse; align-items: flex-start; max-width: 330px; }}
+.cc-help summary {{ list-style: none; display: flex; flex-direction: column-reverse; align-items: flex-start; gap: 0; cursor: pointer; outline: none; }}
+.cc-help summary::-webkit-details-marker {{ display: none; }}
+.cc-help summary img {{ width: 58px; height: 58px; flex: none; border-radius: 50%; background: #fff; border: 1px solid {LINE}; padding: 5px; object-fit: contain;
+  box-shadow: 0 6px 16px rgba(18, 58, 107, .22); animation: cc-bob 2.8s ease-in-out infinite; }}
+.cc-help summary:hover img {{ border-color: {BLUE}; }}
+.cc-help .tip {{ position: relative; background: {BLUE}; color: #fff; border-radius: {R}; padding: 8px 12px; font-size: 12.5px; line-height: 1.5; margin-bottom: 10px;
+  box-shadow: 0 4px 12px rgba(18, 58, 107, .2); max-width: 178px; word-break: keep-all; animation: cc-tip 10s ease-in forwards; }}
+/* 한마디는 10초쯤 보였다가 사라지고, 달달이에 마우스를 올리면 다시 보인다(대화창을 가리지 않게) */
+@keyframes cc-tip {{ 0%, 88% {{ opacity: 1; }} 100% {{ opacity: 0; visibility: hidden; }} }}
+.cc-help summary:hover .tip {{ animation: none; opacity: 1; visibility: visible; }}
+.cc-help .tip b {{ display: block; font-size: 11px; color: #f7cf5a; margin-bottom: 1px; }}
+.cc-help .tip::before {{ content: ''; position: absolute; left: 22px; bottom: -5px; width: 10px; height: 10px; background: {BLUE}; transform: rotate(45deg); }}
+.cc-help .panel {{ background: #fff; border: 1px solid {LINE}; border-top: 3px solid {BLUE}; border-radius: {R}; padding: 12px 14px 10px; margin: 0 0 10px 4px; width: 300px;
+  box-shadow: 0 10px 28px rgba(12, 42, 79, .2); animation: cc-now-in .25s ease-out; }}
+.cc-help .panel .h {{ font-size: 13px; font-weight: 700; color: {BLUE}; margin-bottom: 6px; }}
+.cc-help .panel ol {{ margin: 0; padding-left: 18px; }} .cc-help .panel li {{ font-size: 12.5px; line-height: 1.6; color: {INK}; margin: 2px 0; word-break: keep-all; }}
+.cc-help .panel .f {{ font-size: 11px; color: {MUTED}; margin-top: 8px; padding-top: 6px; border-top: 1px dashed {LINE}; }}
+.cc-help[open] .tip {{ display: none; }}
+@media (max-width: 899px) {{ .cc-help {{ left: 10px; bottom: 10px; }} .cc-help summary img {{ width: 46px; height: 46px; }} .cc-help .tip {{ display: none; }} .cc-help .panel {{ width: 260px; }} }}
+@media (prefers-reduced-motion: reduce) {{ .cc-help summary img {{ animation: none; }} }}
 /* 앱 달력 */
 .cc-cal {{ width: 100%; border-collapse: collapse; table-layout: fixed; border: 1px solid {LINE}; background: #fff; margin: 6px 0 10px; }}
 .cc-cal th {{ font-size: 12px; font-weight: 700; color: {MUTED}; padding: 6px 4px; border-bottom: 1px solid {LINE}; background: {SOFT}; text-align: center; }}
@@ -468,6 +490,29 @@ header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stToolb
 
 def inject() -> None:
     st.markdown(CSS, unsafe_allow_html=True)
+
+
+# 다크모드: 화면 전체의 밝기를 뒤집고 색상은 되돌린다. 사진·달 그림은 한 번 더 뒤집어 원래 색으로 보이게 한다.
+DARK_CSS = """<style>
+html { filter: invert(1) hue-rotate(180deg) contrast(.9) brightness(1.05); background: #fff; }
+img, video, .cc-banner .moon, .cc-wel .bg svg, .cc-wel .face svg { filter: invert(1) hue-rotate(180deg); }
+.cc-help summary img, .cc-banner img, .cc-wel .face { box-shadow: none !important; }
+.cc-banner img { border-radius: 50%; }
+</style>"""
+
+
+def inject_dark() -> None:
+    st.markdown(DARK_CSS, unsafe_allow_html=True)
+
+
+def helper(tip: str, lines: list[str]) -> None:
+    """왼쪽 아래에 떠 있는 도우미 달달이: 지금 할 일을 한마디로 알려 주고, 누르면 간단한 사용법이 펼쳐진다."""
+    items = "".join(f"<li>{escape(line)}</li>" for line in lines)
+    st.markdown(
+        f'<details class="cc-help"><summary><img src="{FACE_BIG}" alt="도우미 달달이">'
+        f'<span class="tip"><b>달달이의 한마디</b>{escape(tip)}</span></summary>'
+        f'<div class="panel"><div class="h">이렇게 쓰면 돼요</div><ol>{items}</ol>'
+        '<div class="f">달달이를 다시 누르면 접혀요</div></div></details>', unsafe_allow_html=True)
 
 
 ASSETS = Path(__file__).resolve().parent.parent / "assets"

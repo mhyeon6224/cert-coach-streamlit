@@ -26,7 +26,7 @@ def new_state() -> dict:
                     "interest_posting": "", "extra": "", "exam_history": []},
         "target": {}, "recommendations": None, "schedules": {}, "plan": None, "plan_preview": None,
         "boost_phase": None, "assets": [], "validity_opt_in": False, "pending": None,
-        "messages": [], "guideline": None, "guideline_detail": None, "study_path": None, "notion": None, "memo": "", "notices": [], "my_calendar": [],
+        "messages": [], "guideline": None, "guideline_detail": None, "study_path": None, "notion": None, "memo": "", "notices": [], "my_calendar": [], "dark": False,
     }
 
 

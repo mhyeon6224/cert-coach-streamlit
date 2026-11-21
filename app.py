@@ -573,9 +573,17 @@ def profile_dialog() -> None:
     account_panel()
 
 
+if S.get("dark"):
+    ui.inject_dark()
+
 with st.container(key="topbar"):
-    bar_left, bar_bell, bar_right = st.columns([3.4, 1, 1.2], vertical_alignment="center")
+    bar_left, bar_mode, bar_bell, bar_right = st.columns([2.9, 1.05, 1, 1.2], vertical_alignment="center")
     bar_left.markdown(ui.brand_html(), unsafe_allow_html=True)
+    if bar_mode.button("라이트 모드" if S.get("dark") else "다크 모드", width="stretch", key="theme_btn",
+                       icon=":material/light_mode:" if S.get("dark") else ":material/dark_mode:",
+                       help="화면을 어둡게/밝게 바꿔요. 로그인했다면 다음에 들어와도 그대로예요."):
+        S["dark"] = not S.get("dark")
+        st.rerun()
     _unread = st.session_state.get("unread", 0)
     if bar_bell.button(f"알림 {_unread}" if _unread else "알림", icon=":material/notifications:", width="stretch",
                        type="primary" if _unread else "secondary", key="bell"):
@@ -610,6 +618,21 @@ elif target.get("name"):
     _line = f"목표 {target['name']} · 시험일 미확인"
 else:
     _line = "아직 목표 자격증이 없어요. 대화나 추천 탭에서 시작해 보세요."
+# 왼쪽 아래 도우미: 지금 단계에서 다음에 할 일 한마디 + 간단한 사용법
+if not target.get("code"):
+    _tip = "먼저 \"자격증 추천해줘\"라고 말해 보세요. 딸 자격증이 있으면 \"OOO로 준비할래\"도 돼요."
+elif target.get("state") in ("합격", "불합격"):
+    _tip = "결과를 반영했어요. \"자격증 다시 추천해줘\"로 다음 목표를 찾아보세요."
+elif not _exam:
+    _tip = "\"시험 일정 알려줘\"로 공식 시험일부터 확인해 보세요."
+elif not _plan:
+    _tip = "\"학습 계획 세워줘\"로 시험일까지의 주차별 계획을 만들어 보세요."
+else:
+    _tip = "\"오늘 뭐 공부해?\"라고 물어보세요. 끝낸 주차는 '계획' 탭에서 체크해요."
+ui.helper(_tip, ["왼쪽 대화창에 말하면 오른쪽에 결과가 정리돼요.", "추천 → 일정 → 강의·교재 → 계획 순서로 가면 돼요.",
+                 "넣을 일정은 '일정' 탭에서 내 달력에 기록해요.", "로그인하면 다시 와도 이어서 할 수 있어요.",
+                 "더 자세한 설명은 '이용 안내' 탭에 있어요."])
+
 left, right = st.columns([1, 1.9], gap="medium")
 
 # ------------------------------------------------------------------ 대화 (왼쪽 패널)
