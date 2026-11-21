@@ -141,6 +141,43 @@ button[kind="primary"], [data-testid="stBaseButton-primary"], [data-testid="stBa
   background: {BLUE} !important; border-color: {BLUE} !important; color: #fff !important; }}
 button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover, [data-testid="stBaseButton-primaryFormSubmit"]:hover {{
   background: #0c2a4f !important; border-color: #0c2a4f !important; color: #fff !important; }}
+/* ================= 입장 화면: 달달이 소개 ================= */
+.cc-wel {{ background: #fff9ee; border: 2px solid #111; border-radius: 22px; padding: 26px 26px 22px; position: relative; overflow: hidden; }}
+.cc-wel::after {{ content: ''; position: absolute; right: -46px; top: -46px; width: 150px; height: 150px; border-radius: 50%; background: #fde9a8; z-index: 0; }}
+.cc-wel > * {{ position: relative; z-index: 1; }}
+.cc-wel .hero {{ display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }}
+.cc-wel .hero img {{ width: 118px; height: 118px; object-fit: contain; flex: none; background: #fff; border: 2px solid #111; border-radius: 50%; padding: 8px; box-shadow: 3px 3px 0 #111; animation: cc-bob 3.2s ease-in-out infinite; }}
+@keyframes cc-bob {{ 0%, 100% {{ transform: translateY(0) rotate(-2deg); }} 50% {{ transform: translateY(-6px) rotate(2deg); }} }}
+@media (prefers-reduced-motion: reduce) {{ .cc-wel .hero img {{ animation: none; }} }}
+.cc-wel .say {{ position: relative; background: #fff; border: 2px solid #111; border-radius: 16px; padding: 8px 14px; font-family: 'Gaegu', 'Noto Sans KR', sans-serif;
+  font-weight: 700; font-size: 21px; color: #111; line-height: 1.3; display: inline-block; }}
+.cc-wel .say::before {{ content: ''; position: absolute; left: -9px; top: 50%; width: 14px; height: 14px; background: #fff; border-left: 2px solid #111; border-bottom: 2px solid #111;
+  transform: translateY(-50%) rotate(45deg); }}
+.cc-wel h1 {{ font-family: 'Jua', 'Noto Sans KR', sans-serif; font-size: 40px; letter-spacing: 2px; color: #111; margin: 10px 0 2px; padding: 0; line-height: 1.15; }}
+.cc-wel h1 i {{ font-style: normal; font-size: 15px; vertical-align: top; margin-left: 4px; }}
+.cc-wel .sub {{ font-size: 15px; color: #3b4652; line-height: 1.6; margin: 0; }}
+.cc-wel .sub b {{ background: linear-gradient(transparent 62%, #fde08a 62%); font-weight: 700; color: #111; }}
+.cc-wel .road {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0 6px; }}
+.cc-wel .stop {{ background: #fff; border: 2px solid #111; border-radius: 16px; padding: 12px 12px 12px; position: relative; box-shadow: 3px 3px 0 #111; }}
+.cc-wel .stop .no {{ position: absolute; top: -11px; left: 12px; background: #f7cf5a; border: 2px solid #111; border-radius: 999px; font-family: 'Jua', sans-serif;
+  font-size: 12px; padding: 0 9px; line-height: 19px; color: #111; }}
+.cc-wel .stop svg {{ width: 40px; height: 40px; display: block; margin: 4px 0 6px; }}
+.cc-wel .stop .t {{ font-family: 'Jua', 'Noto Sans KR', sans-serif; font-size: 17px; color: #111; line-height: 1.25; }}
+.cc-wel .stop .d {{ font-size: 12.5px; color: #4a5560; line-height: 1.5; margin-top: 3px; word-break: keep-all; }}
+.cc-wel .talk {{ margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }}
+.cc-wel .talk .lab {{ font-family: 'Gaegu', sans-serif; font-weight: 700; font-size: 18px; color: #111; margin-right: 2px; }}
+.cc-wel .talk span.q {{ background: #fff; border: 1.5px dashed #111; border-radius: 999px; padding: 3px 12px; font-size: 13px; color: #1d2733; }}
+.cc-wel .vow {{ margin-top: 14px; padding-top: 12px; border-top: 2px dashed #e5c46a; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }}
+.cc-wel .vow div {{ font-size: 12.5px; color: #3b4652; line-height: 1.5; padding-left: 20px; position: relative; word-break: keep-all; }}
+.cc-wel .vow div::before {{ content: ''; position: absolute; left: 2px; top: 5px; width: 10px; height: 10px; border-radius: 50%; background: #f4a6a0; border: 1.5px solid #111; }}
+[class*="st-key-gatecard"] {{ background: #fff; border: 2px solid #111 !important; border-radius: 22px !important; padding: 20px 20px 14px !important; box-shadow: 4px 4px 0 #111; }}
+[class*="st-key-gatecard"] .door {{ font-family: 'Jua', 'Noto Sans KR', sans-serif; font-size: 24px; color: #111; margin: 0 0 2px; }}
+[class*="st-key-gatecard"] .hint {{ font-size: 13px; color: #4a5560; line-height: 1.6; margin: 0 0 6px; }}
+[class*="st-key-gatecard"] .foot {{ font-family: 'Gaegu', sans-serif; font-weight: 700; font-size: 17px; color: #111; margin-top: 8px; line-height: 1.4; }}
+[class*="st-key-gatecard"] [data-testid="stForm"] {{ border: 0; padding: 0; }}
+[class*="st-key-gatecard"] button {{ border-radius: 999px !important; }}
+@media (max-width: 900px) {{ .cc-wel {{ padding: 18px 16px 16px; }} .cc-wel h1 {{ font-size: 30px; }} .cc-wel .hero img {{ width: 84px; height: 84px; }}
+  .cc-wel .say {{ font-size: 18px; }} .cc-wel .road {{ grid-template-columns: repeat(2, 1fr); }} .cc-wel .vow {{ grid-template-columns: 1fr; gap: 6px; }} }}
 /* 앱 달력 */
 .cc-cal {{ width: 100%; border-collapse: collapse; table-layout: fixed; border: 1px solid {LINE}; background: #fff; margin: 6px 0 10px; }}
 .cc-cal th {{ font-size: 12px; font-weight: 700; color: {MUTED}; padding: 6px 4px; border-bottom: 1px solid {LINE}; background: {SOFT}; text-align: center; }}
@@ -414,6 +451,38 @@ def banner() -> None:
     face = f'<span class="f"><img src="{FACE_BIG}" alt="달달이">{moon}</span>' if FACE_BIG else ""
     st.markdown(f'<div class="cc-banner">{face}<div class="w"><div class="t"><i class="sp a">✳</i><i class="sp b">✳</i>자격증 패스 코치</div>'
                 '<div class="n"><i class="sp c">✳</i>달달이</div></div></div>', unsafe_allow_html=True)
+
+
+def welcome() -> None:
+    """입장 화면 소개: 달달이가 이 앱이 무엇을 해 주는지 네 걸음으로 알려 준다."""
+    ink = 'stroke="#111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"'
+    icons = {
+        "pick": f'<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M17 27l-4 15 11-6 11 6-4-15" fill="#f4a6a0" {ink}/>'
+                f'<circle cx="24" cy="19" r="13" fill="#f7cf5a" {ink}/><path d="M24 12l2.2 4.6 5 .6-3.7 3.4 1 5-4.5-2.5-4.5 2.5 1-5-3.7-3.4 5-.6z" fill="#fff" {ink}/></svg>',
+        "date": f'<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="10" width="34" height="31" rx="5" fill="#fff" {ink}/>'
+                f'<path d="M7 19h34" {ink}/><path d="M7 15a5 5 0 0 1 5-5h24a5 5 0 0 1 5 5v4H7z" fill="#a9d3f5" {ink}/><path d="M16 6v8M32 6v8" {ink}/>'
+                f'<circle cx="24" cy="30" r="5" fill="#f4a6a0" {ink}/></svg>',
+        "book": f'<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 12c-5-4-11-4-17-2v27c6-2 12-2 17 2z" fill="#bfe3c0" {ink}/>'
+                f'<path d="M24 12c5-4 11-4 17-2v27c-6-2-12-2-17 2z" fill="#fff" {ink}/><path d="M29 19h7M29 25h7" {ink}/></svg>',
+        "plan": f'<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="9" y="7" width="30" height="35" rx="5" fill="#fff" {ink}/>'
+                f'<rect x="18" y="4" width="12" height="7" rx="3" fill="#f7cf5a" {ink}/><path d="M15 21l3 3 5-6M15 32l3 3 5-6" {ink}/><path d="M28 22h6M28 33h6" {ink}/></svg>',
+    }
+    stops = [("pick", "무엇을 딸까", "내 조건을 듣고 1순위 한 개와 대안을 골라 줘요"),
+             ("date", "언제 볼까", "공식 사이트에서 읽은 접수일·시험일만 알려 줘요"),
+             ("book", "뭘로 공부할까", "강의와 교재를 가격·장단점과 함께 찾아 줘요"),
+             ("plan", "어떻게 지킬까", "주차별 계획을 세우고 오늘 할 일을 챙겨 줘요")]
+    road = "".join(f'<div class="stop"><span class="no">{i}걸음</span>{icons[key]}<div class="t">{escape(title)}</div>'
+                   f'<div class="d">{escape(desc)}</div></div>' for i, (key, title, desc) in enumerate(stops, 1))
+    face = f'<img src="{FACE_BIG}" alt="달달이">' if FACE_BIG else ""
+    st.markdown(
+        f'<div class="cc-wel"><div class="hero">{face}<div><span class="say">안녕! 나는 자격증 코치 달달이야</span>'
+        '<h1>자격증 패스 코치<i>✳</i></h1></div></div>'
+        '<p class="sub">처음 자격증을 준비하는 사람을 위한 코치예요. <b>무엇을 딸지부터 합격하는 날까지</b>, 네 걸음을 하나의 흐름으로 이어 드려요.</p>'
+        f'<div class="road">{road}</div>'
+        '<div class="talk"><span class="lab">이렇게 말하면 돼요</span><span class="q">회계 직무에 맞는 자격증 추천해줘</span>'
+        '<span class="q">시험 일정 알려줘</span><span class="q">학습 계획 세워줘</span><span class="q">오늘 뭐 공부해?</span></div>'
+        '<div class="vow"><div>일정과 응시료는 공식 사이트에서 확인된 것만 보여 줘요</div><div>저장과 캘린더 등록은 동의한 것만 해요</div>'
+        '<div>합격이나 취업을 보장한다고 말하지 않아요</div></div></div>', unsafe_allow_html=True)
 
 
 def greeting(user: str | None, line: str, pills: list[tuple[str, bool]] | None = None) -> None:

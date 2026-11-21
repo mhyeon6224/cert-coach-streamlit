@@ -77,16 +77,20 @@ def gate() -> None:
     if st.session_state.get("authed"):
         return
     ui.header([], date.today().isoformat(), None)
-    _, middle, _ = st.columns([1, 1.2, 1])
-    middle.markdown("#### 입장 비밀번호")
-    middle.caption("과도한 접속을 막기 위해 비밀번호를 사용해요.")
-    with middle.form("login"):
-        password = st.text_input("비밀번호", type="password")
-        if st.form_submit_button("입장", type="primary"):
-            if hmac.compare_digest(password.encode(), secret("APP_PASSWORD", "pnumis").encode()):
-                st.session_state["authed"] = True
-                st.rerun()
-            st.error("비밀번호가 맞지 않아요.")
+    intro, door = st.columns([1.9, 1], gap="large")
+    with intro:
+        ui.welcome()
+    with door, st.container(border=True, key="gatecard"):
+        st.markdown('<p class="door">들어가기</p><p class="hint">수업용으로 연 앱이라 입장 비밀번호가 있어요. 받은 비밀번호를 넣어 주세요.</p>',
+                    unsafe_allow_html=True)
+        with st.form("login", border=False):
+            password = st.text_input("비밀번호", type="password", placeholder="입장 비밀번호")
+            if st.form_submit_button("달달이 만나러 가기", type="primary", width="stretch"):
+                if hmac.compare_digest(password.encode(), secret("APP_PASSWORD", "pnumis").encode()):
+                    st.session_state["authed"] = True
+                    st.rerun()
+                st.error("비밀번호가 맞지 않아요.")
+        st.markdown('<p class="foot">가입 없이 바로 써 볼 수 있어요.<br>로그인하면 계획이 저장돼요.</p>', unsafe_allow_html=True)
     st.stop()
 
 
