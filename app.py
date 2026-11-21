@@ -407,8 +407,13 @@ def save_now() -> bool:
 
 def memo_pad() -> None:
     """프로필 메뉴의 메모장: 자주 붙여 넣는 링크·메모를 적어 둔다."""
+    # 메모 칸은 고정된 이름(key)으로 둔다. 기본값을 저장된 메모로 넘기면, 저장할 때마다 '다른 칸'으로 바뀌어
+    # 그다음에 고친 내용이 버려진다(수정한 메모가 저장되지 않던 원인). 계정이 바뀔 때만 저장된 메모로 다시 채운다.
+    if st.session_state.get("memo_owner") != id(S):
+        st.session_state["memo_text"] = S.get("memo", "")
+        st.session_state["memo_owner"] = id(S)
     with st.form("memo_form", border=False):
-        text = st.text_area("내 메모장", S.get("memo", ""), height=130,
+        text = st.text_area("내 메모장", key="memo_text", height=130,
                             placeholder="예: Notion 학습 공간 링크, 접수 사이트 주소, 수험번호 메모 …",
                             help="로그인하면 계정에 저장돼요. 로그인 전에는 이 창을 닫으면 사라져요.")
         if st.form_submit_button("메모 저장", width="stretch"):
