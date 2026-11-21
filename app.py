@@ -90,7 +90,7 @@ def gate() -> None:
                     st.session_state["authed"] = True
                     st.rerun()
                 st.error("비밀번호가 맞지 않아요.")
-        st.markdown('<p class="foot">가입 없이 바로 써 볼 수 있어요.<br>로그인하면 계획이 저장돼요.</p>', unsafe_allow_html=True)
+        st.markdown('<p class="foot">가입 없이 바로 써 볼 수 있어요. 로그인하면 계획이 저장돼요.</p>', unsafe_allow_html=True)
     st.stop()
 
 

@@ -142,42 +142,68 @@ button[kind="primary"], [data-testid="stBaseButton-primary"], [data-testid="stBa
 button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover, [data-testid="stBaseButton-primaryFormSubmit"]:hover {{
   background: #0c2a4f !important; border-color: #0c2a4f !important; color: #fff !important; }}
 /* ================= 입장 화면: 달달이 소개 ================= */
-.cc-wel {{ background: #fff9ee; border: 2px solid #111; border-radius: 22px; padding: 26px 26px 22px; position: relative; overflow: hidden; }}
-.cc-wel::after {{ content: ''; position: absolute; right: -46px; top: -46px; width: 150px; height: 150px; border-radius: 50%; background: #fde9a8; z-index: 0; }}
+.cc-wel {{ background: #fff; border: 1px solid {LINE}; border-top: 3px solid {BLUE}; border-radius: {R}; padding: 24px 26px 20px; position: relative; overflow: hidden; }}
 .cc-wel > * {{ position: relative; z-index: 1; }}
-.cc-wel .hero {{ display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }}
-.cc-wel .hero img {{ width: 118px; height: 118px; object-fit: contain; flex: none; background: #fff; border: 2px solid #111; border-radius: 50%; padding: 8px; box-shadow: 3px 3px 0 #111; animation: cc-bob 3.2s ease-in-out infinite; }}
-@keyframes cc-bob {{ 0%, 100% {{ transform: translateY(0) rotate(-2deg); }} 50% {{ transform: translateY(-6px) rotate(2deg); }} }}
-@media (prefers-reduced-motion: reduce) {{ .cc-wel .hero img {{ animation: none; }} }}
-.cc-wel .say {{ position: relative; background: #fff; border: 2px solid #111; border-radius: 16px; padding: 8px 14px; font-family: 'Gaegu', 'Noto Sans KR', sans-serif;
-  font-weight: 700; font-size: 21px; color: #111; line-height: 1.3; display: inline-block; }}
-.cc-wel .say::before {{ content: ''; position: absolute; left: -9px; top: 50%; width: 14px; height: 14px; background: #fff; border-left: 2px solid #111; border-bottom: 2px solid #111;
-  transform: translateY(-50%) rotate(45deg); }}
-.cc-wel h1 {{ font-family: 'Jua', 'Noto Sans KR', sans-serif; font-size: 40px; letter-spacing: 2px; color: #111; margin: 10px 0 2px; padding: 0; line-height: 1.15; }}
-.cc-wel h1 i {{ font-style: normal; font-size: 15px; vertical-align: top; margin-left: 4px; }}
-.cc-wel .sub {{ font-size: 15px; color: #3b4652; line-height: 1.6; margin: 0; }}
-.cc-wel .sub b {{ background: linear-gradient(transparent 62%, #fde08a 62%); font-weight: 700; color: #111; }}
-.cc-wel .road {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0 6px; }}
-.cc-wel .stop {{ background: #fff; border: 2px solid #111; border-radius: 16px; padding: 12px 12px 12px; position: relative; box-shadow: 3px 3px 0 #111; }}
-.cc-wel .stop .no {{ position: absolute; top: -11px; left: 12px; background: #f7cf5a; border: 2px solid #111; border-radius: 999px; font-family: 'Jua', sans-serif;
-  font-size: 12px; padding: 0 9px; line-height: 19px; color: #111; }}
-.cc-wel .stop svg {{ width: 40px; height: 40px; display: block; margin: 4px 0 6px; }}
-.cc-wel .stop .t {{ font-family: 'Jua', 'Noto Sans KR', sans-serif; font-size: 17px; color: #111; line-height: 1.25; }}
-.cc-wel .stop .d {{ font-size: 12.5px; color: #4a5560; line-height: 1.5; margin-top: 3px; word-break: keep-all; }}
-.cc-wel .talk {{ margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }}
-.cc-wel .talk .lab {{ font-family: 'Gaegu', sans-serif; font-weight: 700; font-size: 18px; color: #111; margin-right: 2px; }}
-.cc-wel .talk span.q {{ background: #fff; border: 1.5px dashed #111; border-radius: 999px; padding: 3px 12px; font-size: 13px; color: #1d2733; }}
-.cc-wel .vow {{ margin-top: 14px; padding-top: 12px; border-top: 2px dashed #e5c46a; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }}
-.cc-wel .vow div {{ font-size: 12.5px; color: #3b4652; line-height: 1.5; padding-left: 20px; position: relative; word-break: keep-all; }}
-.cc-wel .vow div::before {{ content: ''; position: absolute; left: 2px; top: 5px; width: 10px; height: 10px; border-radius: 50%; background: #f4a6a0; border: 1.5px solid #111; }}
-[class*="st-key-gatecard"] {{ background: #fff; border: 2px solid #111 !important; border-radius: 22px !important; padding: 20px 20px 14px !important; box-shadow: 4px 4px 0 #111; }}
-[class*="st-key-gatecard"] .door {{ font-family: 'Jua', 'Noto Sans KR', sans-serif; font-size: 24px; color: #111; margin: 0 0 2px; }}
-[class*="st-key-gatecard"] .hint {{ font-size: 13px; color: #4a5560; line-height: 1.6; margin: 0 0 6px; }}
-[class*="st-key-gatecard"] .foot {{ font-family: 'Gaegu', sans-serif; font-weight: 700; font-size: 17px; color: #111; margin-top: 8px; line-height: 1.4; }}
+/* 뒤에서 천천히 떠다니는 작은 얼굴들 */
+.cc-wel .bg {{ position: absolute; inset: 0; z-index: 0; pointer-events: none; }}
+.cc-wel .bg img {{ position: absolute; width: 34px; height: 34px; border-radius: 50%; opacity: .16; animation: cc-drift 14s ease-in-out infinite; }}
+.cc-wel .bg .b1 {{ right: 6%; top: 10%; }} .cc-wel .bg .b2 {{ right: 22%; top: 30%; width: 22px; height: 22px; animation-duration: 18s; animation-delay: -5s; }}
+.cc-wel .bg .b3 {{ left: 3%; bottom: 8%; width: 26px; height: 26px; animation-duration: 16s; animation-delay: -9s; }}
+@keyframes cc-drift {{ 0%, 100% {{ transform: translate(0, 0) rotate(-6deg); }} 33% {{ transform: translate(-14px, 12px) rotate(5deg); }} 66% {{ transform: translate(10px, -10px) rotate(-3deg); }} }}
+.cc-wel .hi {{ display: inline-block; font-size: 12.5px; font-weight: 700; color: {SEA}; letter-spacing: .2px; border: 1px solid {LINE}; background: {SOFT}; padding: 2px 9px; border-radius: {R}; }}
+.cc-wel h1 {{ font-size: 32px; font-weight: 900; color: {BLUE}; margin: 8px 0 4px; padding: 0; line-height: 1.2; letter-spacing: -.3px; }}
+.cc-wel .sub {{ font-size: 14.5px; color: {MUTED}; line-height: 1.65; margin: 0; max-width: 620px; }}
+.cc-wel .sub b {{ color: {INK}; font-weight: 700; box-shadow: inset 0 -7px 0 #dbe8f6; }}
+/* 무대: 달달이가 네 걸음 위를 옮겨 다니며 설명한다 */
+.cc-wel .stage {{ position: relative; padding-top: 118px; margin-top: 10px; }}
+.cc-wel .guide {{ position: absolute; top: 0; left: max(12.5%, 104px); transform: translateX(-50%); width: 208px; display: flex; flex-direction: column; align-items: center;
+  animation: cc-walk 16s cubic-bezier(.6, 0, .3, 1) infinite; transition: left .45s cubic-bezier(.6, 0, .3, 1); z-index: 3; pointer-events: none; }}
+@keyframes cc-walk {{ 0%, 20% {{ left: max(12.5%, 104px); }} 25%, 45% {{ left: 37.5%; }} 50%, 70% {{ left: 62.5%; }} 75%, 95% {{ left: min(87.5%, calc(100% - 104px)); }} 100% {{ left: max(12.5%, 104px); }} }}
+.cc-wel .bub {{ position: relative; display: grid; background: {BLUE}; color: #fff; border-radius: {R}; padding: 7px 12px; font-size: 13px; font-weight: 700; line-height: 1.4;
+  text-align: center; min-height: 34px; width: 100%; box-shadow: 0 4px 12px rgba(18, 58, 107, .18); }}
+.cc-wel .bub::after {{ content: ''; position: absolute; left: 50%; bottom: -5px; width: 10px; height: 10px; background: {BLUE}; transform: translateX(-50%) rotate(45deg); }}
+.cc-wel .bub span {{ grid-area: 1 / 1; opacity: 0; animation: cc-say 16s linear infinite; align-self: center; word-break: keep-all; }}
+.cc-wel .bub span:nth-child(2) {{ animation-delay: 4s; }} .cc-wel .bub span:nth-child(3) {{ animation-delay: 8s; }} .cc-wel .bub span:nth-child(4) {{ animation-delay: 12s; }}
+@keyframes cc-say {{ 0% {{ opacity: 0; }} 2.5%, 21% {{ opacity: 1; }} 24.5%, 100% {{ opacity: 0; }} }}
+.cc-wel .face {{ margin-top: 9px; width: 62px; height: 62px; border-radius: 50%; background: #fff; border: 1px solid {LINE}; box-shadow: 0 6px 14px rgba(18, 58, 107, .16);
+  display: flex; align-items: center; justify-content: center; animation: cc-bob 2.6s ease-in-out infinite; }}
+.cc-wel .face img {{ width: 50px; height: 50px; object-fit: contain; border-radius: 50%; }}
+@keyframes cc-bob {{ 0%, 100% {{ transform: translateY(0) rotate(-4deg); }} 50% {{ transform: translateY(-8px) rotate(4deg); }} }}
+.cc-wel .road {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }}
+.cc-wel .stop {{ background: #fff; border: 1px solid {LINE}; border-radius: {R}; padding: 14px 13px 13px; position: relative; cursor: default;
+  transition: transform .25s, border-color .25s, background .25s, box-shadow .25s; animation: cc-lit 16s linear infinite; }}
+.cc-wel .stop:nth-child(2) {{ animation-delay: 4s; }} .cc-wel .stop:nth-child(3) {{ animation-delay: 8s; }} .cc-wel .stop:nth-child(4) {{ animation-delay: 12s; }}
+@keyframes cc-lit {{ 0% {{ transform: none; border-color: {LINE}; background: #fff; box-shadow: none; }}
+  2.5%, 21% {{ transform: translateY(-4px); border-color: {BLUE}; background: #f6f9fc; box-shadow: 0 8px 18px rgba(18, 58, 107, .10); }}
+  24.5%, 100% {{ transform: none; border-color: {LINE}; background: #fff; box-shadow: none; }} }}
+.cc-wel .stop .no {{ font-size: 11px; font-weight: 700; color: {SEA}; letter-spacing: 1px; }}
+.cc-wel .stop svg {{ width: 34px; height: 34px; display: block; margin: 6px 0 7px; }}
+.cc-wel .stop .t {{ font-size: 15.5px; font-weight: 700; color: {INK}; line-height: 1.3; }}
+.cc-wel .stop .d {{ font-size: 12.5px; color: {MUTED}; line-height: 1.55; margin-top: 4px; word-break: keep-all; }}
+/* 카드에 마우스를 올리면 달달이가 그 카드로 날아와 그 걸음을 설명한다 */
+.cc-wel .stage:has(.stop:hover) .guide {{ animation: none; }}
+.cc-wel .stage:has(.stop:hover) .bub span {{ animation: none; opacity: 0; }}
+.cc-wel .stage:has(.stop:hover) .stop {{ animation: none; }}
+.cc-wel .stage .stop:hover {{ transform: translateY(-4px); border-color: {BLUE}; background: #f6f9fc; box-shadow: 0 8px 18px rgba(18, 58, 107, .10); }}
+.cc-wel .stage:has(.stop:nth-child(1):hover) .guide {{ left: max(12.5%, 104px); }} .cc-wel .stage:has(.stop:nth-child(1):hover) .bub span:nth-child(1) {{ opacity: 1; }}
+.cc-wel .stage:has(.stop:nth-child(2):hover) .guide {{ left: 37.5%; }} .cc-wel .stage:has(.stop:nth-child(2):hover) .bub span:nth-child(2) {{ opacity: 1; }}
+.cc-wel .stage:has(.stop:nth-child(3):hover) .guide {{ left: 62.5%; }} .cc-wel .stage:has(.stop:nth-child(3):hover) .bub span:nth-child(3) {{ opacity: 1; }}
+.cc-wel .stage:has(.stop:nth-child(4):hover) .guide {{ left: min(87.5%, calc(100% - 104px)); }} .cc-wel .stage:has(.stop:nth-child(4):hover) .bub span:nth-child(4) {{ opacity: 1; }}
+.cc-wel .talk {{ margin-top: 16px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }}
+.cc-wel .talk .lab {{ font-size: 12px; font-weight: 700; color: {MUTED}; margin-right: 4px; }}
+.cc-wel .talk span.q {{ background: #fff; border: 1px solid {LINE}; border-radius: {R}; padding: 3px 10px; font-size: 12.5px; color: {INK}; }}
+.cc-wel .vow {{ margin-top: 14px; padding-top: 12px; border-top: 1px solid {LINE}; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }}
+.cc-wel .vow div {{ font-size: 12.5px; color: {MUTED}; line-height: 1.5; padding-left: 14px; position: relative; word-break: keep-all; }}
+.cc-wel .vow div::before {{ content: ''; position: absolute; left: 0; top: 6px; width: 6px; height: 6px; background: {BLUE}; }}
+[class*="st-key-gatecard"] {{ background: #fff; border: 1px solid {LINE} !important; border-top: 3px solid {BLUE} !important; border-radius: {R} !important; padding: 20px 20px 14px !important; }}
+[class*="st-key-gatecard"] .door {{ font-size: 19px; font-weight: 700; color: {BLUE}; margin: 0 0 4px; }}
+[class*="st-key-gatecard"] .hint {{ font-size: 13px; color: {MUTED}; line-height: 1.6; margin: 0 0 6px; }}
+[class*="st-key-gatecard"] .foot {{ font-size: 12.5px; color: {MUTED}; margin-top: 8px; line-height: 1.6; }}
 [class*="st-key-gatecard"] [data-testid="stForm"] {{ border: 0; padding: 0; }}
-[class*="st-key-gatecard"] button {{ border-radius: 999px !important; }}
-@media (max-width: 900px) {{ .cc-wel {{ padding: 18px 16px 16px; }} .cc-wel h1 {{ font-size: 30px; }} .cc-wel .hero img {{ width: 84px; height: 84px; }}
-  .cc-wel .say {{ font-size: 18px; }} .cc-wel .road {{ grid-template-columns: repeat(2, 1fr); }} .cc-wel .vow {{ grid-template-columns: 1fr; gap: 6px; }} }}
+@media (max-width: 900px) {{ .cc-wel {{ padding: 18px 16px 16px; }} .cc-wel h1 {{ font-size: 26px; }} .cc-wel .road {{ grid-template-columns: repeat(2, 1fr); }}
+  .cc-wel .guide, .cc-wel .stage:has(.stop:hover) .guide {{ animation: none; left: 50% !important; }} .cc-wel .vow {{ grid-template-columns: 1fr; gap: 6px; }} }}
+@media (prefers-reduced-motion: reduce) {{ .cc-wel .guide, .cc-wel .face, .cc-wel .stop, .cc-wel .bg img, .cc-wel .bub span {{ animation: none; }}
+  .cc-wel .bub span:first-child {{ opacity: 1; }} }}
 /* 앱 달력 */
 .cc-cal {{ width: 100%; border-collapse: collapse; table-layout: fixed; border: 1px solid {LINE}; background: #fff; margin: 6px 0 10px; }}
 .cc-cal th {{ font-size: 12px; font-weight: 700; color: {MUTED}; padding: 6px 4px; border-bottom: 1px solid {LINE}; background: {SOFT}; text-align: center; }}
@@ -454,31 +480,33 @@ def banner() -> None:
 
 
 def welcome() -> None:
-    """입장 화면 소개: 달달이가 이 앱이 무엇을 해 주는지 네 걸음으로 알려 준다."""
-    ink = 'stroke="#111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"'
+    """입장 화면 소개: 달달이가 네 걸음 위를 옮겨 다니며 이 앱이 무엇을 해 주는지 알려 준다(카드에 마우스를 올리면 그 카드로 온다)."""
+    ink = f'stroke="{BLUE}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"'
     icons = {
-        "pick": f'<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M17 27l-4 15 11-6 11 6-4-15" fill="#f4a6a0" {ink}/>'
-                f'<circle cx="24" cy="19" r="13" fill="#f7cf5a" {ink}/><path d="M24 12l2.2 4.6 5 .6-3.7 3.4 1 5-4.5-2.5-4.5 2.5 1-5-3.7-3.4 5-.6z" fill="#fff" {ink}/></svg>',
-        "date": f'<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="10" width="34" height="31" rx="5" fill="#fff" {ink}/>'
-                f'<path d="M7 19h34" {ink}/><path d="M7 15a5 5 0 0 1 5-5h24a5 5 0 0 1 5 5v4H7z" fill="#a9d3f5" {ink}/><path d="M16 6v8M32 6v8" {ink}/>'
-                f'<circle cx="24" cy="30" r="5" fill="#f4a6a0" {ink}/></svg>',
-        "book": f'<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 12c-5-4-11-4-17-2v27c6-2 12-2 17 2z" fill="#bfe3c0" {ink}/>'
+        "pick": f'<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M17 27l-4 15 11-6 11 6-4-15" fill="#dbe8f6" {ink}/>'
+                f'<circle cx="24" cy="19" r="13" fill="#fff" {ink}/><path d="M24 12l2.2 4.6 5 .6-3.7 3.4 1 5-4.5-2.5-4.5 2.5 1-5-3.7-3.4 5-.6z" fill="{SEA}" {ink}/></svg>',
+        "date": f'<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="10" width="34" height="31" rx="3" fill="#fff" {ink}/>'
+                f'<path d="M7 15a5 5 0 0 1 5-5h24a5 5 0 0 1 5 5v4H7z" fill="#dbe8f6" {ink}/><path d="M16 6v8M32 6v8" {ink}/>'
+                f'<circle cx="24" cy="30" r="5" fill="{SEA}" {ink}/></svg>',
+        "book": f'<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 12c-5-4-11-4-17-2v27c6-2 12-2 17 2z" fill="#dbe8f6" {ink}/>'
                 f'<path d="M24 12c5-4 11-4 17-2v27c-6-2-12-2-17 2z" fill="#fff" {ink}/><path d="M29 19h7M29 25h7" {ink}/></svg>',
-        "plan": f'<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="9" y="7" width="30" height="35" rx="5" fill="#fff" {ink}/>'
-                f'<rect x="18" y="4" width="12" height="7" rx="3" fill="#f7cf5a" {ink}/><path d="M15 21l3 3 5-6M15 32l3 3 5-6" {ink}/><path d="M28 22h6M28 33h6" {ink}/></svg>',
+        "plan": f'<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="9" y="7" width="30" height="35" rx="3" fill="#fff" {ink}/>'
+                f'<rect x="18" y="4" width="12" height="7" rx="2" fill="{SEA}" {ink}/><path d="M15 21l3 3 5-6M15 32l3 3 5-6" {ink}/><path d="M28 22h6M28 33h6" {ink}/></svg>',
     }
-    stops = [("pick", "무엇을 딸까", "내 조건을 듣고 1순위 한 개와 대안을 골라 줘요"),
-             ("date", "언제 볼까", "공식 사이트에서 읽은 접수일·시험일만 알려 줘요"),
-             ("book", "뭘로 공부할까", "강의와 교재를 가격·장단점과 함께 찾아 줘요"),
-             ("plan", "어떻게 지킬까", "주차별 계획을 세우고 오늘 할 일을 챙겨 줘요")]
-    road = "".join(f'<div class="stop"><span class="no">{i}걸음</span>{icons[key]}<div class="t">{escape(title)}</div>'
-                   f'<div class="d">{escape(desc)}</div></div>' for i, (key, title, desc) in enumerate(stops, 1))
-    face = f'<img src="{FACE_BIG}" alt="달달이">' if FACE_BIG else ""
+    stops = [("pick", "무엇을 딸까", "내 조건을 듣고 1순위 한 개와 대안을 골라 줘요", "먼저, 무엇을 딸지 같이 골라요"),
+             ("date", "언제 볼까", "공식 사이트에서 읽은 접수일·시험일만 알려 줘요", "시험일은 공식 사이트에서 읽어 와요"),
+             ("book", "뭘로 공부할까", "강의와 교재를 가격·장단점과 함께 찾아 줘요", "강의와 교재도 제가 찾아 드려요"),
+             ("plan", "어떻게 지킬까", "주차별 계획을 세우고 오늘 할 일을 챙겨 줘요", "계획은 제가 매일 챙길게요")]
+    road = "".join(f'<div class="stop"><span class="no">STEP {i:02d}</span>{icons[key]}<div class="t">{escape(title)}</div>'
+                   f'<div class="d">{escape(desc)}</div></div>' for i, (key, title, desc, _) in enumerate(stops, 1))
+    lines = "".join(f"<span>{escape(say)}</span>" for *_, say in stops)
+    face = f'<div class="face"><img src="{FACE_BIG}" alt="달달이"></div>' if FACE_BIG else ""
+    drift = "".join(f'<img class="b{i}" src="{FACE}" alt="">' for i in (1, 2, 3)) if FACE else ""
     st.markdown(
-        f'<div class="cc-wel"><div class="hero">{face}<div><span class="say">안녕! 나는 자격증 코치 달달이야</span>'
-        '<h1>자격증 패스 코치<i>✳</i></h1></div></div>'
+        f'<div class="cc-wel"><div class="bg">{drift}</div>'
+        '<span class="hi">안녕! 나는 자격증 코치 달달이야</span><h1>자격증 패스 코치</h1>'
         '<p class="sub">처음 자격증을 준비하는 사람을 위한 코치예요. <b>무엇을 딸지부터 합격하는 날까지</b>, 네 걸음을 하나의 흐름으로 이어 드려요.</p>'
-        f'<div class="road">{road}</div>'
+        f'<div class="stage"><div class="guide"><div class="bub">{lines}</div>{face}</div><div class="road">{road}</div></div>'
         '<div class="talk"><span class="lab">이렇게 말하면 돼요</span><span class="q">회계 직무에 맞는 자격증 추천해줘</span>'
         '<span class="q">시험 일정 알려줘</span><span class="q">학습 계획 세워줘</span><span class="q">오늘 뭐 공부해?</span></div>'
         '<div class="vow"><div>일정과 응시료는 공식 사이트에서 확인된 것만 보여 줘요</div><div>저장과 캘린더 등록은 동의한 것만 해요</div>'
