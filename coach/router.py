@@ -206,9 +206,13 @@ def apply_profile(state: dict, updates: dict) -> list[str]:
         profile["learning_style"] = updates["learning_style"]
         changed.append(f"학습 방식 {profile['learning_style']}")
     for name in updates.get("owned_add") or []:
-        if isinstance(name, str) and name.strip() and name.strip() not in profile["owned"]:
-            profile["owned"].append(name.strip()[:60])
-            changed.append(f"보유 자격증 +{name.strip()}")
+        if not (isinstance(name, str) and name.strip()):
+            continue
+        known = find_cert(name)  # '컴활 1급'처럼 줄여 말해도 정식 이름 하나로만 남긴다
+        name = known["name"] if known else name.strip()[:60]
+        if name not in profile["owned"]:
+            profile["owned"].append(name)
+            changed.append(f"보유 자격증 +{name}")
     return changed
 
 
