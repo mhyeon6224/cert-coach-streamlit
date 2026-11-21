@@ -390,6 +390,21 @@ def notion_sync_dialog(today_value, hours: float, active: bool) -> None:
 
 
 # ------------------------------------------------------------------ 사이드바
+def save_now() -> bool:
+    """지금 상태를 계정에 바로 저장한다(로그인한 경우). 성공하면 True."""
+    auth_now = st.session_state.get("auth")
+    if not auth_now:
+        return False
+    current = snapshot(st.session_state["S"])
+    try:
+        storage.save(store, auth_now, current)
+    except storage.StoreError:
+        return False
+    st.session_state["saved_digest"] = hashlib.sha256(
+        json.dumps(current, ensure_ascii=False, sort_keys=True, default=str).encode()).hexdigest()
+    return True
+
+
 def memo_pad() -> None:
     """프로필 메뉴의 메모장: 자주 붙여 넣는 링크·메모를 적어 둔다."""
     with st.form("memo_form", border=False):
@@ -398,7 +413,11 @@ def memo_pad() -> None:
                             help="로그인하면 계정에 저장돼요. 로그인 전에는 이 창을 닫으면 사라져요.")
         if st.form_submit_button("메모 저장", width="stretch"):
             S["memo"] = text
-            st.toast("메모를 저장했어요.")
+            # 이 창(프로필 메뉴)은 화면 일부만 다시 그리므로, 맨 아래의 자동 저장을 기다리지 않고 여기서 바로 계정에 저장한다
+            if st.session_state.get("auth"):
+                st.toast("메모를 계정에 저장했어요." if save_now() else "메모를 계정에 저장하지 못했어요. 잠시 뒤 다시 눌러 주세요.")
+            else:
+                st.toast("메모를 적어 뒀어요. 로그인하면 계정에 저장돼요.")
     linked = (S.get("notion") or {}).get("url")
     if linked:
         st.caption("연결된 Notion 학습 공간")
@@ -420,6 +439,7 @@ def account_panel() -> None:
             except storage.StoreError as error:
                 st.error(str(error))
         if st.button("로그아웃", width="stretch", key="logout"):
+            save_now()  # 나가기 전에 마지막 상태를 한 번 더 저장한다
             for key in ("auth", "saved_digest", "notion_token", "notion_token_loaded"):
                 st.session_state.pop(key, None)
             st.session_state["S"] = new_state()
