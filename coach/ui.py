@@ -141,6 +141,18 @@ button[kind="primary"], [data-testid="stBaseButton-primary"], [data-testid="stBa
   background: {BLUE} !important; border-color: {BLUE} !important; color: #fff !important; }}
 button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover, [data-testid="stBaseButton-primaryFormSubmit"]:hover {{
   background: #0c2a4f !important; border-color: #0c2a4f !important; color: #fff !important; }}
+/* 앱 달력 */
+.cc-cal {{ width: 100%; border-collapse: collapse; table-layout: fixed; border: 1px solid {LINE}; background: #fff; margin: 6px 0 10px; }}
+.cc-cal th {{ font-size: 12px; font-weight: 700; color: {MUTED}; padding: 6px 4px; border-bottom: 1px solid {LINE}; background: {SOFT}; text-align: center; }}
+.cc-cal td {{ vertical-align: top; height: 78px; padding: 4px 5px; border: 1px solid {LINE}; font-size: 12px; overflow: hidden; }}
+.cc-cal td.out {{ background: #fafbfc; }} .cc-cal td.out .d {{ color: #c3cad2; }}
+.cc-cal .d {{ font-weight: 700; color: {INK}; display: inline-block; min-width: 20px; }}
+.cc-cal td.today {{ box-shadow: inset 0 0 0 2px {BLUE}; }} .cc-cal td.today .d {{ color: {BLUE}; }}
+.cc-cal th.sun, .cc-cal td.sun .d {{ color: #b3261e; }}
+.cc-cal .e {{ display: block; margin-top: 3px; padding: 1px 5px; border-left: 3px solid {BLUE}; background: #eef3f8; color: {INK}; font-size: 11.5px; line-height: 1.45;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: keep-all; }}
+.cc-cal .e.plan {{ border-left-color: #9aa5b1; background: #f3f5f7; color: {MUTED}; }}
+@media (max-width: 760px) {{ .cc-cal td {{ height: 60px; padding: 3px; }} .cc-cal .e {{ font-size: 10.5px; padding: 0 3px; }} }}
 /* 누를 수 없는 버튼은 한눈에 꺼져 보이게 한다 */
 .stButton > button:disabled, [data-testid="stFormSubmitButton"] > button:disabled, button[kind="primary"]:disabled,
 [data-testid="stBaseButton-primary"]:disabled, [data-testid="stBaseButton-primaryFormSubmit"]:disabled {{
@@ -527,6 +539,31 @@ def outcome(title: str, steps_: list[str], tone: str = "") -> None:
     """결과(합격/불합격)를 알렸을 때 일어나는 일을 순서대로 보여 주는 조용한 패널."""
     rows = "".join(f"<li>{escape(s)}</li>" for s in steps_)
     st.markdown(f'<div class="cc-out {tone}"><div class="t">{escape(title)}</div><ol>{rows}</ol></div>', unsafe_allow_html=True)
+
+
+def month_calendar(year: int, month: int, events: list[dict], today_iso: str) -> None:
+    """한 달 달력. events: {"date": "YYYY-MM-DD", "title": str, "kind": "" | "plan"}"""
+    import calendar as _cal
+
+    def _short(title: str) -> str:  # 칸이 좁아 '[자격증] 시험일'은 '시험일'만 보여 준다(전체 이름은 마우스를 올리면 보이고, 아래 표에도 있다)
+        return re.sub(r"^\[[^\]]*\]\s*", "", title) or title
+
+    by_day: dict[str, list[dict]] = {}
+    for event in events:
+        by_day.setdefault(str(event.get("date", ""))[:10], []).append(event)
+    head = "".join(f'<th class="{"sun" if i == 0 else ""}">{d}</th>' for i, d in enumerate("일월화수목금토"))
+    body = ""
+    for week in _cal.Calendar(firstweekday=6).monthdatescalendar(year, month):
+        body += "<tr>"
+        for i, day in enumerate(week):
+            iso = day.isoformat()
+            classes = " ".join(c for c in ("out" if day.month != month else "", "today" if iso == today_iso else "", "sun" if i == 0 else "") if c)
+            items = "".join(f'<span class="e {escape(str(e.get("kind") or ""))}" title="{escape(str(e.get("title", "")), quote=True)}">'
+                            f'{escape(_short(str(e.get("title", ""))))}</span>' for e in by_day.get(iso, [])[:3])
+            more = f'<span class="e plan">+{len(by_day[iso]) - 3}개 더</span>' if len(by_day.get(iso, [])) > 3 else ""
+            body += f'<td class="{classes}"><span class="d">{day.day}</span>{items}{more}</td>'
+        body += "</tr>"
+    st.markdown(f'<table class="cc-cal"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>', unsafe_allow_html=True)
 
 
 def kv(pairs: list[tuple[str, str]]) -> None:

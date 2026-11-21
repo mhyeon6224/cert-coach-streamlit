@@ -26,7 +26,7 @@ def new_state() -> dict:
                     "interest_posting": "", "extra": "", "exam_history": []},
         "target": {}, "recommendations": None, "schedules": {}, "plan": None, "plan_preview": None,
         "boost_phase": None, "assets": [], "validity_opt_in": False, "pending": None,
-        "messages": [], "guideline": None, "guideline_detail": None, "study_path": None, "notion": None, "memo": "", "notices": [],
+        "messages": [], "guideline": None, "guideline_detail": None, "study_path": None, "notion": None, "memo": "", "notices": [], "my_calendar": [],
     }
 
 
@@ -90,6 +90,10 @@ profile은 사용자가 이 문장에서 **직접 말한 값만** 채운다(나�
 
 
 PICK = re.compile(r"(?:\d\s*순위|대안\s*\d?|[첫두세]\s*번째)\s*(?:자격증)?\s*(?:으로|로|를|을)?\s*(?:준비|할래|할게|갈게|정할|정했|시작|선택|골랐|고를)")
+
+
+STUDY_WORDS = re.compile(r"강의|교재|인강|기출|문제집|수험서|공부\s*자료")
+NOT_THIS = re.compile(r"말고|대신에?|(?:이|가)?\s*아니라|(?:이|가)?\s*아니고|빼고|보다는")
 
 
 def _keyword_intent(text: str) -> str:
@@ -158,7 +162,14 @@ def interpret(message: str, state: dict, llm: LLM | None) -> tuple[str, dict | N
         intent = "decide"
     elif intent == "general" and _keyword_intent(message) == "decide":
         intent = "decide"
-    cert = find_cert(message) or (find_cert(cert_name) if cert_name else None)
+    # 강의·교재를 찾아 달라는 말이 '자격증 추천'으로 넘어가지 않게 한다(문장에 '자격증'이 없을 때)
+    if intent == "recommend" and STUDY_WORDS.search(message) and "자격증" not in message:
+        intent = "prepare"
+    # "A 말고 B 칠래": 버리는 쪽(A)이 아니라 고르는 쪽(B)을 읽는다
+    chosen = NOT_THIS.split(message)
+    cert = (find_cert(chosen[-1]) if len(chosen) > 1 else None) or find_cert(message) or (find_cert(cert_name) if cert_name else None)
+    if len(chosen) > 1 and find_cert(chosen[-1]) and intent in ("general", "recommend", "profile_update"):
+        intent = "decide"
     generic = re.sub(r"\s", "", cert_name or "") in ("", "자격증", "시험", "자격", "이자격증", "그자격증", "1순위", "대안")
     target_name = state["target"].get("name") or ""
     same_as_target = bool(target_name) and bool(cert_name) and (cert_name in target_name or target_name in cert_name)
@@ -483,8 +494,10 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
             return prefix + "'기능' 탭에 자산(자격증·어학 성적)을 먼저 입력해 주세요."
         return prefix + "**유효기간 검토**\n\n" + "\n".join(f"- {r['자산']}: {r['상태']} — {r['검토'] or r['만료일']}" for r in rows)
     if intent == "jobguide":
-        names = [c["name"] for c in (state.get("recommendations") or {}).get("candidates", [])] or \
-                ([target["name"]] if target.get("name") else [])
+        # 지금 준비 중인 목표 자격증을 먼저 보고, 추천 후보는 그 뒤에 붙인다
+        names = ([target["name"]] if target.get("name") else []) + \
+                [c["name"] for c in (state.get("recommendations") or {}).get("candidates", []) if c["name"] != target.get("name")]
+        names = names[:3]
         detail: dict = {}
         guide = engine.job_guideline(state["profile"], names, llm, search, today, detail)
         state["guideline"], state["guideline_detail"] = guide, detail or None

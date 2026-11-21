@@ -717,6 +717,18 @@ with tab_sched, st.container(border=True, key="card5"):
         if chosen:
             st.dataframe(pd.DataFrame(chosen).rename(columns={"title": "일정", "date": "날짜", "note": "메모"}),
                          hide_index=True, width="stretch")
+            if st.button(f"선택한 {len(chosen)}개 일정을 앱 달력에 기록하기", type="primary", key="cal_app_add"):
+                _mine = S.setdefault("my_calendar", [])
+                _added = 0
+                for _e in chosen:
+                    if not any(m["title"] == _e["title"] and m["date"] == _e["date"] for m in _mine):
+                        _mine.append({"title": _e["title"], "date": _e["date"], "note": _e.get("note", "")})
+                        _added += 1
+                st.session_state["cal_month"] = chosen[0]["date"][:7]
+                st.session_state["flash"] = (f"앱 달력에 {_added}개 일정을 기록했어요. 아래 '내 달력'에서 볼 수 있어요." if _added
+                                             else "고른 일정은 이미 앱 달력에 있어요.")
+                st.rerun()
+            st.caption("앱 달력은 이 앱 안에만 기록해요. Google Calendar나 휴대폰 캘린더에도 넣으려면 아래를 이용해 주세요.")
             gcfg = gcal.config()
             with st.container(border=True, key="card6"):
                 st.markdown(ui.badges([("Google Calendar", "navy"), ("내 계정으로 연결", "sky")]), unsafe_allow_html=True)
@@ -764,6 +776,58 @@ with tab_sched, st.container(border=True, key="card5"):
                     st.link_button(f"일정 추가 화면 열기 — {event['title']} ({event['date']})", planner.gcal_link(event))
                 st.download_button("다른 캘린더용 파일 받기 (.ics)", planner.to_ics(chosen), "cert-schedule.ics", "text/calendar")
                 st.caption(".ics 파일은 Outlook·Apple 캘린더·휴대폰 캘린더에서 열면 등록돼요.")
+
+# ------------------------------------------------------------------ 내 달력 (앱 안의 달력)
+with tab_sched, st.container(border=True, key="cardcal"):
+    ui.section("내 달력", "앱 안에 기록한 일정 · 직접 추가할 수도 있어요")
+    _mine = S.setdefault("my_calendar", [])
+    _ym = st.session_state.get("cal_month") or today.isoformat()[:7]
+    _year, _month = int(_ym[:4]), int(_ym[5:7])
+    m1, m2, m3, m4 = st.columns([1, 1.4, 1, 4])
+    if m1.button("◀", width="stretch", key="cal_prev", help="이전 달"):
+        st.session_state["cal_month"] = f"{_year - (_month == 1)}-{12 if _month == 1 else _month - 1:02d}"
+        st.rerun()
+    if m2.button("오늘", width="stretch", key="cal_now", help="이번 달로 돌아가기"):
+        st.session_state["cal_month"] = today.isoformat()[:7]
+        st.rerun()
+    if m3.button("▶", width="stretch", key="cal_next", help="다음 달"):
+        st.session_state["cal_month"] = f"{_year + (_month == 12)}-{1 if _month == 12 else _month + 1:02d}"
+        st.rerun()
+    m4.markdown(f"#### {_year}년 {_month}월")
+    _show_plan = st.checkbox("주차별 계획의 마감일도 함께 보기", value=False, key="cal_show_plan") if S.get("plan") else False
+    _shown = [dict(e, kind="") for e in _mine]
+    if _show_plan:
+        _shown += [{"date": r["end"], "title": f"{r['week']}주차 {r['phase']} 마감" + (" (완료)" if r["done"] else ""), "kind": "plan"}
+                   for r in S["plan"]["rows"]]
+    ui.month_calendar(_year, _month, _shown, today.isoformat())
+    if _mine:
+        _upcoming = sorted(_mine, key=lambda e: e["date"])
+
+        def _left(day: str) -> str:
+            n = (date.fromisoformat(day) - today).days
+            return "오늘" if n == 0 else f"D-{n}" if n > 0 else "지남"
+
+        ui.table(["날짜", "일정", "남은 날", "메모"], [[e["date"], e["title"], _left(e["date"]), e.get("note", "")] for e in _upcoming])
+        _labels = [f"{e['date']} · {e['title']}" for e in _upcoming]
+        _drop = st.multiselect("지울 일정", _labels, key="cal_drop", placeholder="지울 일정을 고르세요")
+        if _drop and st.button(f"선택한 {len(_drop)}개 지우기", key="cal_drop_btn"):
+            S["my_calendar"] = [e for e in _mine if f"{e['date']} · {e['title']}" not in _drop]
+            st.session_state.pop("cal_drop", None)
+            st.rerun()
+    else:
+        st.caption("아직 기록한 일정이 없어요. 위 '캘린더에 넣기'에서 일정을 고르거나, 아래에서 직접 추가해 주세요.")
+    with st.expander("일정 직접 추가하기"):
+        with st.form("cal_add_form", border=False, clear_on_submit=True):
+            a1, a2 = st.columns([1, 2])
+            _when = a1.date_input("날짜", today, key="cal_add_date")
+            _what = a2.text_input("일정 이름", placeholder="예: 원서접수 시작, 모의고사 보는 날", key="cal_add_title")
+            if st.form_submit_button("달력에 추가", type="primary"):
+                if not _what.strip():
+                    st.error("일정 이름을 적어 주세요.")
+                else:
+                    _mine.append({"title": _what.strip()[:60], "date": _when.isoformat(), "note": "직접 추가"})
+                    st.session_state["cal_month"] = _when.isoformat()[:7]
+                    st.rerun()
 
 # ------------------------------------------------------------------ 학습 공간
 with tab_space, st.container(border=True, key="card7"):
