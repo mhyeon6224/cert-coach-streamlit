@@ -165,7 +165,7 @@ button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover, [data-
 /* 달도 함께 떠다닌다: 배경에 둘, 달달이 곁에 하나 */
 .cc-wel .bg svg {{ position: absolute; animation: cc-moon 11s ease-in-out infinite; }}
 .cc-wel .bg .m1 {{ right: 4%; top: 12px; width: 44px; height: 44px; }}
-.cc-wel .bg .m2 {{ left: 46%; top: 6%; width: 24px; height: 24px; opacity: .55; animation-duration: 15s; animation-delay: -6s; }}
+.cc-wel .bg .m2 {{ left: 68%; top: 6px; width: 22px; height: 22px; opacity: .55; animation-duration: 15s; animation-delay: -6s; }}
 @keyframes cc-moon {{ 0%, 100% {{ transform: translate(0, 0) rotate(-8deg); }} 25% {{ transform: translate(-12px, 9px) rotate(4deg); }}
   50% {{ transform: translate(-4px, 10px) rotate(10deg); }} 75% {{ transform: translate(10px, 7px) rotate(-2deg); }} }}
 .cc-wel .face {{ position: relative; }}
