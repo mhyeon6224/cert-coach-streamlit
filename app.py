@@ -585,11 +585,6 @@ elif target.get("name"):
     _line = f"목표 {target['name']} · 시험일 미확인"
 else:
     _line = "아직 목표 자격증이 없어요. 대화나 추천 탭에서 시작해 보세요."
-ui.banner()
-ui.greeting(auth["nickname"] if auth else None,
-            f"오늘 {today.isoformat()} · {_line}" + ("" if auth else " · 로그인 전이라 창을 닫으면 내용이 사라져요"),
-            [("AI 추천" if llm else "규칙 기반 추천", bool(llm)), ("웹 검색" if search else "공식 페이지 직접 수집", bool(search)),
-             ("클라우드 저장" if store.durable else "임시 저장", store.durable)])
 left, right = st.columns([1, 1.9], gap="medium")
 
 # ------------------------------------------------------------------ 대화 (왼쪽 패널)
@@ -615,6 +610,12 @@ with left:
 
 # ------------------------------------------------------------------ 대시보드 (오른쪽)
 with right:
+    # 배너와 인사말을 오른쪽에 두어, 왼쪽 대화창이 화면 맨 위에서 시작하게 한다(노트북에서도 입력 칸이 바로 보임)
+    ui.banner()
+    ui.greeting(auth["nickname"] if auth else None,
+                f"오늘 {today.isoformat()} · {_line}" + ("" if auth else " · 로그인 전이라 창을 닫으면 내용이 사라져요"),
+                [("AI 추천" if llm else "규칙 기반 추천", bool(llm)), ("웹 검색" if search else "공식 페이지 직접 수집", bool(search)),
+                 ("클라우드 저장" if store.durable else "임시 저장", store.durable)])
     ui.tiles([
         ("목표 자격증", target.get("name") or "미정", (f"{target.get('issuer') or ''} · {target.get('state')}" if target.get("code") else "추천 탭에서 골라 보세요")),
         ("시험일", f"D-{(date.fromisoformat(_exam) - today).days}" if _exam else "미확인", _exam or "일정 탭에서 확인"),

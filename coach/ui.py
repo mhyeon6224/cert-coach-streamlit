@@ -227,6 +227,11 @@ button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover, [data-
   .cc-wel .guide, .cc-wel .stage:has(.stop:hover) .guide {{ animation: none; left: 50% !important; }} .cc-wel .vow {{ grid-template-columns: 1fr; gap: 6px; }} }}
 @media (prefers-reduced-motion: reduce) {{ .cc-wel .guide, .cc-wel .face, .cc-wel .stop, .cc-wel .bg img, .cc-wel .bub span {{ animation: none; }}
   .cc-wel .bub span:first-child {{ opacity: 1; }} }}
+/* 대화창 높이: 화면 높이에 맞춰, 노트북에서도 스크롤 없이 입력 칸이 보이게 한다 */
+/* (높이는 대화 상자를 감싼 틀이 정하므로 그 틀의 크기를 바꾼다) */
+[data-testid="stLayoutWrapper"]:has(> [class*="st-key-cardchat"]) {{ flex: 0 0 clamp(300px, calc(100vh - 300px), 720px) !important;
+  height: clamp(300px, calc(100vh - 300px), 720px) !important; }}
+@media (max-width: 899px) {{ [data-testid="stLayoutWrapper"]:has(> [class*="st-key-cardchat"]) {{ flex: 0 0 340px !important; height: 340px !important; }} }}
 /* 앱 달력 */
 .cc-cal {{ width: 100%; border-collapse: collapse; table-layout: fixed; border: 1px solid {LINE}; background: #fff; margin: 6px 0 10px; }}
 .cc-cal th {{ font-size: 12px; font-weight: 700; color: {MUTED}; padding: 6px 4px; border-bottom: 1px solid {LINE}; background: {SOFT}; text-align: center; }}
