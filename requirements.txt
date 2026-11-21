@@ -1,5 +1,5 @@
-# 이 앱을 실행하는 데 필요한 파이썬 패키지 (Streamlit Community Cloud가 이 파일을 읽어 자동으로 설치합니다)
-streamlit>=1.67      # 웹 화면 (app.py 실행)
-pandas>=2.0          # 표(주차별 계획, 일정) 처리
-requests>=2.31       # AI 모델·공식 사이트·Notion·Google 호출
-tavily-python>=0.5   # 웹 검색 (공식 일정·강의·교재 확인)
+# Python packages this app needs. Streamlit Community Cloud reads this file and installs them automatically.
+streamlit>=1.67      # web UI (runs app.py)
+pandas>=2.0          # tables: weekly plan, schedules
+requests>=2.31       # calls to the AI model, official exam sites, Notion, Google
+tavily-python>=0.5   # web search for official schedules, lectures, books
