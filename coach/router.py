@@ -48,7 +48,35 @@ def apply_round(state: dict, row: dict, schedule: dict) -> None:
         exam_date=row["exam_date"], reg_start=row.get("reg_start"), reg_end=row.get("reg_end"),
         result_date=row.get("result_date"), round=row.get("round"), source_url=row.get("source_url"),
         venue_notice=row.get("venue_start"),
-        fee=(schedule.get("fee") or {}).get("text"), basis="공식 페이지 대조 확인", checked_at=schedule["checked_at"])
+        fee=(schedule.get("fee") or {}).get("text"), basis="공식 페이지 대조 확인", checked_at=schedule["checked_at"],
+        reg_answer=None)
+
+
+def reg_closed(state: dict, today: date) -> bool:
+    """목표 회차의 원서접수가 오늘 기준으로 이미 끝났고, 접수했는지 아직 묻지 않았으면 True."""
+    target = state["target"]
+    if not (target.get("exam_date") and target.get("reg_end")) or target.get("state") != "준비중" or target.get("reg_answer"):
+        return False
+    try:
+        return date.fromisoformat(str(target["reg_end"])[:10]) < today <= date.fromisoformat(str(target["exam_date"])[:10])
+    except ValueError:
+        return False
+
+
+def ask_registered(state: dict, after: str = "") -> str:
+    """접수가 끝난 회차면 먼저 접수했는지 묻는다. after='plan'이면 답을 들은 뒤 계획 세우기로 이어 간다."""
+    target = state["target"]
+    state["pending"], state["after_reg"] = "reg_check", after
+    return (f"**{target.get('round') or '이 회차'}**(시험일 {target['exam_date']})는 원서접수가 {target['reg_end']}에 끝났어요. "
+            "이 회차에 접수하셨나요? (접수했어 / 안 했어)")
+
+
+def _after_registration(state: dict, today: date, lead: str) -> str:
+    """접수 여부 확인이 끝난 뒤: 계획을 세우던 중이었으면 이어서 계획을 보여 준다."""
+    after = state.pop("after_reg", "")
+    if after == "plan" and state["target"].get("exam_date"):
+        return lead + "\n\n" + do_plan(state, today)
+    return lead
 
 
 def parse_date(text: str, today: date) -> date | None:
@@ -296,6 +324,8 @@ def do_plan(state, today) -> str:
                 "공식 사이트에서 본 시험일을 직접 알려 주세요. (예: 2027-03-07)")
     if date.fromisoformat(target["exam_date"]) <= today:
         return "저장된 시험일이 이미 지났어요. 다음 회차 일정을 확인한 뒤 다시 계획을 세워 주세요."
+    if reg_closed(state, today):  # 접수가 끝난 회차면 계획을 세우기 전에 접수했는지부터 확인한다
+        return ask_registered(state, after="plan") + "\n\n왼쪽 대화창에 답해 주시면 이어서 계획을 세울게요."
     return plan_preview(state, today)
 
 
@@ -325,6 +355,40 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
             return f"보유 자격증에 {name}을(를) 추가했어요. 이후 추천에서는 이 자격증과 겹치는 후보를 낮춰요."
         if NO.search(text):
             return "알겠어요. 보유 자격증 목록은 바꾸지 않았어요."
+    if pending == "reg_check" and state["target"].get("exam_date"):
+        target = state["target"]
+        if re.search(r"안\s*했|못\s*했|안\s*함|아직|놓쳤|^(아니|아뇨|ㄴㄴ|no)", text, re.I):
+            state["pending"] = "reg_choice"
+            return (f"알겠어요. 그러면 어떻게 할지 골라 주세요.\n\n"
+                    f"1. **다음 회차로 준비하기** — 다음 회차 일정으로 목표를 바꿔요.\n"
+                    f"2. **이 시험일({target['exam_date']})에 맞춰 공부해 보기** — 실제 응시는 못 하지만, 이 날짜를 기준으로 계획을 세워 연습해요.\n\n"
+                    "\"다음 회차\" 또는 \"이대로\"라고 말해 주세요.")
+        if YES.search(text) or re.search(r"접수\s*(했|완료|함)|했어|했습니다|했음", text):
+            target["state"], target["reg_answer"], state["pending"] = "접수완료", "접수함", None
+            return _after_registration(state, today, f"{target['name']} 상태를 **접수완료**로 바꿨어요. 시험일 {target['exam_date']} 기준으로 진행할게요.")
+    if pending == "reg_choice" and state["target"].get("exam_date"):
+        target = state["target"]
+        if re.search(r"다음|^\s*1\b|①", text):
+            state["pending"] = None
+            schedule = state["schedules"].get(target["name"]) or {}
+            later = [r for r in schedule.get("rounds") or [] if not r["past"] and r.get("exam_date") and r["exam_date"] > target["exam_date"]
+                     and not (r.get("reg_end") and str(r["reg_end"])[:10] < today.isoformat())]
+            if later:
+                apply_round(state, later[0], schedule)
+                state["plan"], state["plan_preview"] = None, None
+                return _after_registration(state, today, f"목표를 다음 회차로 바꿨어요: {target.get('round') or ''} 시험일 {target['exam_date']}"
+                                           + (f" · 원서접수 {target.get('reg_start') or '미확인'} ~ {target['reg_end']}" if target.get("reg_end") else ""))
+            closed = target["exam_date"]
+            target.update(exam_date=None, reg_start=None, reg_end=None, result_date=None, round=None, basis=None, reg_answer=None)
+            state["plan"], state["plan_preview"] = None, None
+            state.pop("after_reg", None)
+            state["pending"] = "exam_date"
+            return (f"다음 회차로 준비할게요. 다만 {closed} 다음 회차의 공식 일정은 아직 확인되지 않았어요(미발표일 수 있어요). "
+                    "일정이 공지되면 \"시험 일정 알려줘\"로 다시 확인해 주세요. 공식 사이트에서 본 시험일이 있으면 지금 알려 주셔도 돼요. (예: 2027-03-20)")
+        if re.search(r"이대로|그대로|이\s*날짜|이\s*시험일|연습|공부해|^\s*2\b|②", text):
+            target["reg_answer"], state["pending"] = "연습", None
+            return _after_registration(state, today, f"알겠어요. 접수는 하지 않았지만 시험일 {target['exam_date']}을 기준으로 공부해 볼게요. "
+                                                     "실제 응시는 다음 회차에 접수해야 가능해요.")
     if pending == "exam_date":
         day = parse_date(text, today)
         if day and day > today and state["target"].get("code"):
@@ -393,8 +457,12 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
     if intent == "schedule":
         result = engine.lookup_schedule(target_cert, llm, search, today)
         state["schedules"][target_cert["name"]] = result
-        if state["target"].get("code") == target_cert["code"] and not state["target"].get("exam_date"):
-            set_target(state, target_cert)
+        if state["target"].get("code") == target_cert["code"]:
+            # 이미 목표로 정한 자격증이면 "준비를 시작하려면…" 안내는 붙이지 않는다
+            if not state["target"].get("exam_date"):
+                set_target(state, target_cert)
+            tail = ("\n\n" + ask_registered(state)) if reg_closed(state, today) else ""
+            return prefix + engine.schedule_markdown(result) + tail
         return prefix + engine.schedule_markdown(result) + "\n\n일정만 확인했어요. 준비를 시작하려면 \"이 자격증으로 준비할래\"라고 말해 주세요."
 
     if intent == "prepare":
@@ -430,6 +498,8 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
             lines.append("공식 일정을 캘린더에 넣고 싶으면 '일정' 탭에서 **등록할 일정만 골라** 캘린더 파일을 받을 수 있어요. 동의 없이 자동 등록하지 않아요.")
         else:
             lines.append("아직 확인된 공식 시험일이 없어요. \"시험 일정 알려줘\"로 확인해 주세요.")
+        if reg_closed(state, today):
+            return prefix + "\n\n".join(lines[:2] + [ask_registered(state)])
         lines.append("다음에 할 수 있는 것 (원하는 것부터 골라 주세요)\n"
                      "- \"시험 일정 알려줘\" — 공식 접수·시험·발표일 확인\n"
                      "- \"강의와 교재 추천해줘\" — 비용 선호에 맞춘 강의·교재·기출 자료\n"

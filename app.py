@@ -91,7 +91,7 @@ def gate() -> None:
                     st.rerun()
                 st.error("비밀번호가 맞지 않아요.")
         # data-build: 배포된 앱이 어느 버전의 코드로 돌고 있는지 입장 화면에서 확인하기 위한 표시(화면에는 보이지 않는다)
-        st.markdown('<p class="foot" data-build="2026-11-24-plan-certs">가입 없이 바로 써 볼 수 있어요. 로그인하면 계획이 저장돼요.</p>', unsafe_allow_html=True)
+        st.markdown('<p class="foot" data-build="2026-11-24-reg-check">가입 없이 바로 써 볼 수 있어요. 로그인하면 계획이 저장돼요.</p>', unsafe_allow_html=True)
     st.stop()
 
 
@@ -1062,7 +1062,8 @@ with tab_space, st.container(border=True, key="card7"):
                 if ready:
                     _note = do_plan(S, today)
                     if not S.get("plan_preview"):
-                        st.error(_note)
+                        # 접수가 끝난 회차면 오류가 아니라 '접수했는지' 확인 질문이다
+                        (st.info if S.get("pending") == "reg_check" else st.error)(_note)
                 else:
                     st.error("미리보기를 만들려면 " + " / ".join(
                         ([] if exam else ["확정된 시험일('일정' 탭)"]) + ([] if hours else ["주당 공부 가능 시간('프로필' 탭)"]))

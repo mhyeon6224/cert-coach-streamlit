@@ -69,7 +69,7 @@ CATALOG = [
        ["테샛", "경제이해력검증시험"]),
     _c("CAPM", "CAPM", "PMI", "https://www.pmi.org/", ["기획", "개발"], "입문",
        "프로젝트 범위·일정·위험 관리의 기초를 검증하는 국제 자격. 실무 경력 없이 응시할 수 있지만 사전 교육 이수가 필요",
-       ["Certified Associate in Project Management"], False, ["PMP"]),
+       ["Certified Associate in Project Management"], True, ["PMP"]),  # 사전 교육 이수 조건이 있어 '제한 있음'으로 표시
     _c("PMP", "PMP", "PMI", "https://www.pmi.org/", ["기획", "개발"], "상위",
        "프로젝트 관리 전문가 국제 자격. 프로젝트 실무 경력이 있어야 응시 가능", ["Project Management Professional"], True),
     _c("SERVICE_UX", "서비스·경험디자인기사", "한국디자인진흥원", "https://www.kidp.or.kr/", ["기획", "마케팅"], "상위",
