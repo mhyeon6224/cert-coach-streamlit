@@ -102,13 +102,20 @@ def _rule_candidates(profile: dict, exclude: set[str]) -> list[dict]:
 
 
 RECOMMEND_PROMPT = """너는 처음 자격증 준비를 시작하는 사람을 돕는 자격증 코치다. {untrusted}
-[자격증 카탈로그]의 code 중에서 고르는 것이 원칙이다. 1순위 1개와 대안 1개(조건이 갈릴 때만 최대 2개)를 추천한다.
-카탈로그에 사용자의 직무·조건에 맞는 자격증이 없거나 더 잘 맞는 실제 자격증이 따로 있을 때만, 후보 1개에 한해
-"code"를 null로 두고 "name"에 그 자격증의 정확한 이름을 적는다(실제로 시행 중인 자격증만. 확신이 없으면 쓰지 않는다).
+1순위 1개와 대안 1개(조건이 갈릴 때만 최대 2개)를 추천한다. 가장 먼저 [이번 요청]과 [사용자 조건]이 무엇을 원하는지 읽는다.
+[자격증 카탈로그]는 이 앱이 일정까지 자세히 아는 자격증 목록일 뿐, 세상의 모든 자격증이 아니다. 요청에 맞는 것이 카탈로그에 있으면 그 code를 쓴다.
+카탈로그에 요청한 분야의 자격증이 없으면 억지로 카탈로그에서 고르지 않는다. 그때는 "code"를 null로 두고 "name"에
+실제로 시행 중인 자격증의 정확한 이름을 적는다(최대 2개. 확신이 없는 이름은 쓰지 않는다).
 아래 JSON만 출력한다.
 {{"summary": "2~3문장 요약", "practice_first": "추가 자격증보다 프로젝트·실무·포트폴리오가 먼저라고 판단되면 그 이유 1문장, 아니면 빈 문자열",
   "candidates": [{{"code": "카탈로그 code 또는 null", "name": "code가 null일 때만 자격증 이름", "reason": "진로 연결 근거 1~2문장", "prep_scope": "준비 예상 범위 1문장", "caution": "주의점 1문장"}}]}}
 규칙:
+- [이번 요청]이나 '기타 사항'에 "A 말고 B", "B 먼저", "A는 빼고"처럼 빼 달라거나 먼저 하고 싶다는 말이 있으면 그대로 따른다.
+  빼 달라고 한 분야(A)의 자격증은 후보에 넣지 않는다. 이름에 A가 들어가지 않아도 A 분야 자격증이면 넣지 않는다.
+  A를 먼저 해야 한다고 판단하더라도 후보에 넣지 말고, 그 의견은 summary에 한 문장으로만 적는다.
+- [직전에 추천한 자격증]을 사용자가 받아들이지 않고 다시 물은 것이면 같은 자격증을 다시 1순위로 내지 않는다.
+- 요청한 분야에 널리 인정되는 자격증이 드물면 그 사실을 summary에 솔직하게 적고, 자격증 대신 무엇으로 역량을 보여 주는지 practice_first에 적는다.
+  맞는 자격증이 정말 없으면 candidates를 빈 배열로 둔다. 요청과 상관없는 자격증으로 자리를 채우지 않는다.
 - 이미 보유한 자격증과 제외 목록은 추천하지 않는다. 보유 자격과 과도하게 겹치는 후보는 낮춘다.
 - 시험 일정·응시료·합격률 같은 숫자 사실은 쓰지 않는다. 취업·합격을 보장하는 표현을 쓰지 않는다.
 - 사용자가 말하지 않은 조건을 지어내지 않는다.
@@ -121,6 +128,33 @@ OUTSIDE_PROMPT = """너는 자격증 확인 담당이다. {untrusted}
 아래 JSON만 출력한다. 검색 결과로 확인되지 않으면 exists를 false로 둔다.
 {{"exists": true, "issuer": "주관기관 이름", "official_source_id": 0, "summary": "어떤 역량을 검증하는 자격인지 1문장"}}
 official_source_id는 주관기관(또는 공식 접수처) 사이트인 검색 결과의 source_id다. 블로그·학원·뉴스는 공식 사이트가 아니다. 없으면 null."""
+
+
+AVOID = re.compile(r"말고|빼고|제외|대신에?|(?:이|가)?\s*아니라|(?:이|가)?\s*아니고|보다는")
+
+
+def avoided_tags(request: str, profile: dict) -> set[str]:
+    """사용자가 빼 달라고 한 분야. "데이터 말고 기획 먼저" → {'데이터'}.
+
+    AI가 이 요청을 놓치더라도 그 분야 자격증이 다시 나오지 않도록 코드에서 한 번 더 거른다.
+    """
+    def scan(text: str) -> tuple[set[str], str]:
+        found, rest, last = set(), "", 0
+        for m in AVOID.finditer(text):
+            start = max(last, m.start() - 16)
+            cut = max(text.rfind(ch, start, m.start()) for ch in ",.!?/\n")
+            start = cut + 1 if cut >= start else start
+            found |= set(job_tags(text[start:m.start()]))
+            rest += text[last:start] + " "
+            last = m.end()
+        return found, rest + text[last:]
+
+    now, wanted_text = scan(request or "")
+    saved = set()
+    for line in (profile.get("extra") or "").split("\n"):
+        saved |= scan(line)[0]
+    wanted = set(job_tags(wanted_text))  # 이번 요청에서 원한다고 말한 분야는 예전에 빼 달라고 했더라도 막지 않는다
+    return (now | saved) - wanted
 
 
 def verify_outside(name: str, llm: LLM | None, search: Search | None) -> tuple[dict | None, str]:
@@ -152,9 +186,16 @@ def verify_outside(name: str, llm: LLM | None, search: Search | None) -> tuple[d
 
 
 def recommend(profile: dict, llm: LLM | None, today: date, *, exclude: set[str] | None = None,
-              after_pass: str = "", search: Search | None = None) -> dict:
-    """1순위 + 대안 추천. LLM 실패 시 규칙 기반으로 대체하고 그 사실을 남긴다."""
-    exclude = exclude or set()
+              after_pass: str = "", search: Search | None = None, request: str = "",
+              previous: list[str] | None = None) -> dict:
+    """1순위 + 대안 추천. LLM 실패 시 규칙 기반으로 대체하고 그 사실을 남긴다.
+
+    request: 사용자가 방금 한 말(“데이터 말고 기획 먼저”처럼 빼 달라는 것·먼저 하고 싶은 것을 읽기 위해 그대로 넘긴다).
+    previous: 바로 앞 추천에서 낸 자격증 이름들.
+    """
+    avoid = avoided_tags(request, profile)
+    exclude = set(exclude or set()) | {c["code"] for c in CATALOG if c["tags"][0] in avoid}
+    answered = False  # AI가 답을 했는지(했다면 후보가 비어도 규칙 추천으로 덮어쓰지 않는다)
     notices: list[str] = []
     owned = profile.get("owned") or []
     candidates, summary, practice_first, mode = [], "", "", "규칙 기반"
@@ -162,19 +203,22 @@ def recommend(profile: dict, llm: LLM | None, today: date, *, exclude: set[str] 
         catalog_text = "\n".join(
             f"- {c['code']}: {c['name']} ({c['issuer']}, {c['level']}{', 응시자격 제한' if c['restricted'] else ''}) — {c['desc']}"
             for c in CATALOG if c["code"] not in exclude and not is_owned(c, owned))
-        user = (f"[사용자 조건]\n{profile_text(profile)}\n"
+        user = ((f"[이번 요청] {request.strip()[:400]}\n" if request.strip() else "")
+                + (f"[직전에 추천한 자격증] {', '.join(previous)}\n" if previous else "")
+                + f"[사용자 조건]\n{profile_text(profile)}\n"
                 + (f"[방금 취득한 자격증] {after_pass} — 다음 단계를 추천\n" if after_pass else "")
                 + f"\n[자격증 카탈로그]\n{catalog_text}")
         try:
             raw = llm.json([
                 {"role": "system", "content": RECOMMEND_PROMPT.format(untrusted=UNTRUSTED, today=today.isoformat())},
-                {"role": "user", "content": user}], temperature=0.2)
-            seen, outside_used = set(), False
+                {"role": "user", "content": user}], temperature=0.2, best_first=True)
+            answered = True
+            seen, outside_used = set(), 0
             for item in raw.get("candidates") or []:
                 code = item.get("code") if isinstance(item, dict) else None
                 cert, basis = BY_CODE.get(code), ""
-                if not cert and isinstance(item, dict) and item.get("name") and not outside_used:
-                    outside_used = True  # 목록 밖 후보는 1개까지만, 시행 여부를 확인한 뒤에만 넣는다
+                if not cert and isinstance(item, dict) and item.get("name") and outside_used < 2:
+                    outside_used += 1  # 목록 밖 후보는 2개까지만, 시행 여부를 확인한 뒤에만 넣는다
                     cert, basis = verify_outside(str(item["name"]), llm, search)
                     if not cert:
                         notices.append(f"'{str(item['name'])[:30]}'은(는) 시행 여부와 공식 사이트를 확인하지 못해 후보에서 뺐어요.")
@@ -191,7 +235,7 @@ def recommend(profile: dict, llm: LLM | None, today: date, *, exclude: set[str] 
             mode = "AI 추천"
         except LLMError:
             notices.append("AI 추천을 불러오지 못해 기본 규칙으로 추천했어요.")
-    if not candidates:
+    if not candidates and not (answered and (summary or practice_first)):
         candidates = _rule_candidates(profile, exclude)
         mode = "규칙 기반"
         if not llm:
@@ -211,6 +255,18 @@ def recommend(profile: dict, llm: LLM | None, today: date, *, exclude: set[str] 
 
 
 def recommend_markdown(result: dict) -> str:
+    if not result["candidates"] and (result["summary"] or result["practice_first"]):
+        # 요청한 분야에 맞는 자격증이 없다고 AI가 판단한 경우: 상관없는 자격증으로 채우지 않고 그대로 말한다
+        out = [result["summary"]] if result["summary"] else []
+        if result["practice_first"]:
+            out.append(f"##### 자격증보다 먼저 볼 것\n{result['practice_first']}")
+        out.append("##### 참고\n" + "\n".join(
+            ["- 이번 요청에 맞는 자격증 후보를 내지 않았어요. 상관없는 자격증으로 자리를 채우지 않기 위해서예요.",
+             f"- 이번 판단에 사용한 정보: {result['used']}"] + [f"- {n}" for n in result["notices"]]))
+        out.append("##### 다음에 할 수 있는 것\n"
+                   "- 염두에 둔 자격증이 있으면 이름을 말해 주세요. (예: \"○○ 시험 일정 알려줘\")\n"
+                   "- 범위를 넓혀도 되면 \"관련 분야까지 넓혀서 추천해줘\"라고 말해 주세요.")
+        return "\n\n".join(out)
     if not result["candidates"]:
         return ("조건에 맞는 후보를 카탈로그에서 찾지 못했어요. 희망 직무를 조금 더 구체적으로 알려 주세요. "
                 "(예: 데이터 분석, 회계, 마케팅, 클라우드 엔지니어)")

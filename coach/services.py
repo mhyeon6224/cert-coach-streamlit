@@ -38,13 +38,15 @@ class LLM:
         self.api_key, self.model, self.base_url = api_key, model, base_url.rstrip("/")
 
     def chat(self, messages: list[dict], *, temperature: float = 0.2, max_tokens: int = 1800,
-             json_mode: bool = False, accept=None):
+             json_mode: bool = False, accept=None, best_first: bool = False):
         """LLM_MODEL에 쉼표로 여러 모델을 적으면 앞 모델이 혼잡(429·5xx)하거나 늦을 때 다음 모델로 넘어간다.
 
         accept(text)를 주면 그 함수가 받아들인 값(예: 해석된 JSON)을 돌려준다. 받아들이지 못하면(ValueError)
         같은 요청을 다음 모델에 보낸다. 모든 모델이 한 번씩 실패하면 잠깐 쉬고 한 바퀴 더 돈다.
         """
         models = [m.strip() for m in self.model.split(",") if m.strip()]
+        if best_first:  # 판단이 중요한 요청(자격증 추천)은 목록 맨 뒤의 큰 모델부터 묻는다
+            models.reverse()
         failure = LLMError("LLM 모델이 설정되지 않았어요")
         for lap in range(2):
             if lap:

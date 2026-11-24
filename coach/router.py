@@ -86,6 +86,8 @@ profile은 사용자가 이 문장에서 **직접 말한 값만** 채운다(나�
 - owned_add: 이미 보유했다고 말한 자격증 이름 배열.
 - budget: 강의·교재에 쓸 수 있는 금액(말한 그대로).  - english: 영어 시험명과 점수(예: "TOEIC 850").
 - extra: 위 항목에 들어가지 않지만 추천·계획에 영향을 줄 사정(예: "주말에만 공부 가능", "수학이 약함"). 없으면 null.
+  빼 달라는 분야나 먼저 하고 싶은 분야도 여기에 적는다(예: "데이터 말고 기획 먼저" → "데이터 분야 자격증은 제외, 기획 먼저").
+- desired_job: 희망 직무 자체를 말하거나 바꿀 때만 채운다. 준비 순서·우선순위만 말한 문장에서는 null.
 현재 대기 중인 질문: {pending}"""
 
 
@@ -249,8 +251,10 @@ def log_result(state: dict, result: str, today: date, other: str = "") -> tuple[
     return weak
 
 
-def do_recommend(state, llm, search, today, *, after_pass="", exclude=None) -> str:
-    result = engine.recommend(state["profile"], llm, today, after_pass=after_pass, exclude=exclude, search=search)
+def do_recommend(state, llm, search, today, *, after_pass="", exclude=None, request="") -> str:
+    previous = [c["name"] for c in (state.get("recommendations") or {}).get("candidates") or []]
+    result = engine.recommend(state["profile"], llm, today, after_pass=after_pass, exclude=exclude, search=search,
+                              request=request, previous=previous)
     state["recommendations"] = result
     text = engine.recommend_markdown(result)
     detail: dict = {}
@@ -341,6 +345,20 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
             return (f"'{named}'은(는) 목록·자료집·검색 어디에서도 확인하지 못했어요. 정확한 자격증 이름으로 다시 말해 주세요. "
                     "(지금 목표 자격증의 일정이 궁금하면 \"시험 일정 알려줘\"라고만 말하면 돼요.)")
     old_hours = state["profile"].get("weekly_hours")
+    # "데이터 말고 기획 먼저"는 직무를 바꾼 것이 아니라 준비 순서를 말한 것이다. 직무('데이터 기획')는 그대로 두고
+    # 그 말을 '기타 사항'에 남겨, 이후 추천에서도 계속 지킨다.
+    old_job, new_job = state["profile"].get("desired_job") or "", updates.get("desired_job")
+    if NOT_THIS.search(text) and cert is None and not find_cert(text) and intent in ("recommend", "profile_update", "general"):
+        narrowed = isinstance(new_job, str) and bool(old_job) and bool(new_job.strip()) and new_job.strip() in old_job
+        if narrowed:
+            updates.pop("desired_job")
+        if (narrowed or intent == "recommend") and not updates.get("extra"):
+            updates["extra"] = f"요청: {text[:120]}"
+        # 이미 추천을 받은 뒤 "그거 말고 이쪽 먼저"라고만 말해도 새 조건으로 바로 다시 추천한다
+        only_priority = set(updates) <= {"extra"} and bool(updates.get("extra"))
+        if narrowed or (only_priority and old_job and (state.get("recommendations") or {}).get("candidates")
+                        and not state["target"].get("code")):
+            intent = "recommend"
     changed = apply_profile(state, updates)
     prefix = f"조건을 반영했어요: {', '.join(changed)}\n\n" if changed else ""
     if pending in ("recommend_missing", "plan_inputs") and changed and intent in ("general", "profile_update", "jobguide", "recommend", "plan"):
@@ -359,7 +377,7 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
             if not state["profile"].get("weekly_hours"):
                 questions.append(f"{len(questions) + 1}. 일주일에 몇 시간 정도 공부할 수 있나요?")
             return prefix + "맞춤 추천에 필요한 것만 여쭤볼게요. 한 번에 답해 주셔도 돼요.\n\n" + "\n".join(questions)
-        return prefix + do_recommend(state, llm, search, today)
+        return prefix + do_recommend(state, llm, search, today, request=text)
 
     target_cert = _resolve_cert(state, cert, text)
     if pending == "path_inputs" and intent == "prepare" and not cert and state.get("pending_cert"):
