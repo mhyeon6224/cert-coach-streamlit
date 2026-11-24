@@ -90,7 +90,8 @@ def gate() -> None:
                     st.session_state["authed"] = True
                     st.rerun()
                 st.error("비밀번호가 맞지 않아요.")
-        st.markdown('<p class="foot">가입 없이 바로 써 볼 수 있어요. 로그인하면 계획이 저장돼요.</p>', unsafe_allow_html=True)
+        # data-build: 배포된 앱이 어느 버전의 코드로 돌고 있는지 입장 화면에서 확인하기 위한 표시(화면에는 보이지 않는다)
+        st.markdown('<p class="foot" data-build="2026-11-24-plan-certs">가입 없이 바로 써 볼 수 있어요. 로그인하면 계획이 저장돼요.</p>', unsafe_allow_html=True)
     st.stop()
 
 

@@ -348,6 +348,11 @@ def handle(message: str, state: dict, llm: LLM | None, search: Search | None, to
     # "데이터 말고 기획 먼저"는 직무를 바꾼 것이 아니라 준비 순서를 말한 것이다. 직무('데이터 기획')는 그대로 두고
     # 그 말을 '기타 사항'에 남겨, 이후 추천에서도 계속 지킨다.
     old_job, new_job = state["profile"].get("desired_job") or "", updates.get("desired_job")
+    # "기획 쪽 자격증으로 다시 추천해줘"처럼 직무의 일부만 다시 말한 것도 직무 변경으로 보지 않는다
+    if isinstance(new_job, str) and new_job.strip() and new_job.strip() != old_job and new_job.strip() in old_job \
+            and not re.search(r"직무|직군|취업|바꿀|바꿔|변경", text) and not NOT_THIS.search(text):
+        updates.pop("desired_job")
+        updates.setdefault("extra", f"요청: {text[:120]}")
     if NOT_THIS.search(text) and cert is None and not find_cert(text) and intent in ("recommend", "profile_update", "general"):
         narrowed = isinstance(new_job, str) and bool(old_job) and bool(new_job.strip()) and new_job.strip() in old_job
         if narrowed:
