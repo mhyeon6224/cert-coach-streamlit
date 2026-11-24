@@ -15,11 +15,29 @@ import pandas as pd
 import streamlit as st
 from html import escape
 
+import os
+import sys
+
+
+def _coach_files_changed_at() -> float:
+    files = [getattr(m, "__file__", None) for n, m in list(sys.modules.items()) if n.split(".")[0] == "coach"]
+    return max((os.path.getmtime(f) for f in files if f and os.path.exists(f)), default=0.0)
+
+
+# 배포 서버는 코드를 새로 받아도 이 파일(app.py)만 다시 읽고 coach/ 안의 모듈은 예전 것을 메모리에 그대로 쓰는 일이 있다.
+# coach/ 파일이 마지막으로 불러온 뒤에 바뀌었으면(또는 처음 확인하는 것이면) 지우고 새로 불러온다.
+_stamp = getattr(sys, "_coach_stamp", None)
+if _stamp is None or _coach_files_changed_at() > _stamp:
+    for _name in [n for n in sys.modules if n.split(".")[0] == "coach"]:
+        del sys.modules[_name]
+
 from coach import engine, plan as planner
 from coach.catalog import BY_CODE, CATALOG, cert_from_item, find_cert
 from coach.router import apply_round, do_plan, do_recommend, handle, new_state, set_target
 from coach.services import build_services, secret
 from coach import gcal, notion, storage, ui
+
+sys._coach_stamp = _coach_files_changed_at()
 
 st.set_page_config(page_title="자격증 패스 코치", page_icon="🎓", layout="wide")
 ui.inject()
@@ -91,7 +109,7 @@ def gate() -> None:
                     st.rerun()
                 st.error("비밀번호가 맞지 않아요.")
         # data-build: 배포된 앱이 어느 버전의 코드로 돌고 있는지 입장 화면에서 확인하기 위한 표시(화면에는 보이지 않는다)
-        st.markdown('<p class="foot" data-build="2026-11-24-reg-check">가입 없이 바로 써 볼 수 있어요. 로그인하면 계획이 저장돼요.</p>', unsafe_allow_html=True)
+        st.markdown('<p class="foot" data-build="2026-11-24-reload">가입 없이 바로 써 볼 수 있어요. 로그인하면 계획이 저장돼요.</p>', unsafe_allow_html=True)
     st.stop()
 
 
